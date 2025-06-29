@@ -9,7 +9,7 @@ app.use(express.json());
 // app.use('/', );
 
 // Обработка ошибок
-app.use((err, req, res, next) => {
+app.use((err, req, res) => {
     res.status(500).json({ error: err.message });
 });
 
@@ -17,14 +17,6 @@ app.use((err, req, res, next) => {
 
 app.get('/hello', (req, res) => {
     res.send('Hello World!');
-})
-
-app.get('/', (req, res) => {
-    res.send('Hello Node!');
-})
-
-app.get('/g', (req, res) => {
-    res.send('Hello Node');
 })
 
 // Подключение к БД и запуск сервера
