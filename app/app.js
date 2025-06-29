@@ -9,7 +9,7 @@ app.use(express.json());
 // app.use('/', );
 
 // Обработка ошибок
-app.use((err, req, res) => {
+app.use((err, req, res, next) => {
     res.status(500).json({ error: err.message });
 });
 
