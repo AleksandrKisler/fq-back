@@ -10,10 +10,12 @@
   "type": "commonjs",
   "main": "app.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
     "start": "node app.js",
-    "dev": "nodemon --watch ./ app.js",
-    "preprod": "NODE_ENV=preproduction node app.js"
+    "dev": "nodemon app.js",
+    "migrate": "sequelize db:migrate",
+    "migrate:undo": "sequelize db:migrate:undo",
+    "seed": "sequelize db:seed:all",
+    "test": "NODE_ENV=test jest"
   },
   "dependencies": {
     "body-parser": "^2.2.0",
@@ -25,6 +27,7 @@
     "sequelize": "^6.37.7"
   },
   "devDependencies": {
-    "nodemon": "^3.1.10"
+    "nodemon": "^3.1.10",
+    "sequelize-cli": "^6.6.3"
   }
 }

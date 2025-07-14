@@ -1,37 +1,72 @@
 const express = require('express');
-
-const db = require('./src/models');
-// const routes = require('./routes');
+const sequelize = require('./config');
+const { exec } = require('child_process');
+const { Sequelize } = require('sequelize'); // Добавляем импорт Sequelize
 
 const app = express();
 app.use(express.json());
 
-
+// Проверка подключения к БД
+app.get('/health', (req, res) => {
+    res.json({
+        status: 'OK',
+        database: sequelize.config.database,
+        host: sequelize.config.host,
+        dialect: sequelize.getDialect() // Явное получение диалекта
+    });
+});
 
 // Обработка ошибок
 app.use((err, req, res, next) => {
-    res.status(500).json({ error: err.message });
+    console.error(err.stack);
+    res.status(500).json({ error: 'Internal Server Error' });
 });
 
-app.get('/hello', (req, res) => {
-    res.send('Hello World!');
-})
+// Функция запуска миграций
+async function runMigrations() {
+    return new Promise((resolve, reject) => {
+        exec('npx sequelize-cli db:migrate', (error, stdout, stderr) => {
+            if (error) {
+                console.error('❌ Migration error:', error.message);
+                console.error('Migration stderr:', stderr);
+                reject(error);
+                return;
+            }
+            console.log('✅ Migrations executed successfully');
+            console.log(stdout);
+            resolve();
+        });
+    });
+}
 
-async function testConnection() {
+// Главная функция запуска
+async function startServer() {
     try {
-        await db.sequelize.authenticate();
-        console.log('✅ Подключение к БД успешно установлено');
+        // Проверяем и выводим используемый диалект
+        console.log(`Using dialect: ${sequelize.getDialect()}`);
 
-        // Синхронизация моделей с БД (только для разработки!)
-        // await db.sequelize.sync({ alter: true });
-        // console.log('🔄 Модели синхронизированы');
+        await sequelize.authenticate();
+        console.log('✅ Database connection established');
 
+        // Запуск миграций
+        if (process.env.RUN_MIGRATIONS === 'true') {
+            console.log('🚀 Running database migrations...');
+            await runMigrations();
+        }
+
+        // Запуск сервера
+        const PORT = process.env.PORT || 3000;
+        app.listen(PORT, () => {
+            console.log(`🚀 Server running on port ${PORT}`);
+            console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
+            console.log(`Database: ${sequelize.config.database}@${sequelize.config.host}`);
+            console.log(`Dialect: ${sequelize.getDialect()}`); // Явный вывод диалекта
+        });
     } catch (error) {
-        console.error('❌ Ошибка подключения к БД:', error);
+        console.error('❌ Failed to start server:', error);
+        process.exit(1);
     }
 }
 
-testConnection().then(() => {
-    app.listen(3000, () => console.log('Server started on port 3000'));
-})
-
+// Запускаем сервер
+startServer();
