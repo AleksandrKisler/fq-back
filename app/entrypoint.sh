@@ -8,8 +8,8 @@ fi
 # Выбор команды запуска
 if [ "$NODE_ENV" = "production" ]; then
     echo "Running development server"
-    exec npm start
+    exec dotenvx run -- npm start
 else
     echo "Running development server"
-    exec npm run dev
+    exec dotenvx run -- npm run dev
 fi

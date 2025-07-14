@@ -1,14 +1,18 @@
 FROM node:22
 
-WORKDIR /usr/src/app
+WORKDIR /app
 
 COPY package*.json ./
+RUN curl -fsS https://dotenvx.sh | sh
 RUN npm install
 RUN npm ci --only=production
+RUN dotenvx ext prebuild
 
 COPY . .
+COPY entrypoint.sh /app/entrypoint.sh
+
+RUN chmod +x /app/entrypoint.sh
 
 EXPOSE 3000
 
-RUN chmod +x entrypoint.sh
-ENTRYPOINT ["./entrypoint.sh"]
+ENTRYPOINT ["/app/entrypoint.sh"]
