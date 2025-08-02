@@ -1,13 +1,13 @@
 const express = require('express');
 const sequelize = require('./config');
-const { exec } = require('child_process');
-const { Sequelize } = require('sequelize'); // Добавляем импорт Sequelize
+const authRoutes = require('./routes/authRoutes');
+const productRoutes = require('./routes/productRoutes');
 
 const app = express();
 app.use(express.json());
 
 // Проверка подключения к БД
-app.get('/health', (req, res) => {
+app.get('/api/v1/health', (req, res) => {
     res.json({
         status: 'OK',
         database: sequelize.config.database,
@@ -16,27 +16,26 @@ app.get('/health', (req, res) => {
     });
 });
 
-// Обработка ошибок
-app.use((err, req, res, next) => {
-    console.error(err.stack);
-    res.status(500).json({ error: 'Internal Server Error' });
-});
+
+// Подключение роутов
+app.use('/api/v1/', authRoutes);
+app.use('/api/v1/', productRoutes);
 
 // Функция запуска миграций
 async function runMigrations() {
-    return new Promise((resolve, reject) => {
-        exec('npx sequelize-cli db:migrate', (error, stdout, stderr) => {
-            if (error) {
-                console.error('❌ Migration error:', error.message);
-                console.error('Migration stderr:', stderr);
-                reject(error);
-                return;
-            }
-            console.log('✅ Migrations executed successfully');
-            console.log(stdout);
-            resolve();
-        });
-    });
+    // return new Promise((resolve, reject) => {
+    //     exec('npx sequelize-cli db:migrate', (error, stdout, stderr) => {
+    //         if (error) {
+    //             console.error('❌ Migration error:', error.message);
+    //             console.error('Migration stderr:', stderr);
+    //             reject(error);
+    //             return;
+    //         }
+    //         console.log('✅ Migrations executed successfully');
+    //         console.log(stdout);
+    //         resolve();
+    //     });
+    // });
 }
 
 // Главная функция запуска
