@@ -8,7 +8,6 @@ module.exports = {
         references: { model: 'products', key: 'id' }
       },
       sku: { type: Sequelize.STRING(255), unique: true },
-      price: { type: Sequelize.DECIMAL(10,2), allowNull: false },
       stock_quantity: { type: Sequelize.BIGINT, allowNull: false }
     });
   },

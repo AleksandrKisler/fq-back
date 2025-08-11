@@ -3,8 +3,12 @@ const jwt = require('jsonwebtoken');
 
 module.exports = {
   generateTokens(user) {
+    const payload = user.is_anonymous
+      ? { id: user.id, device_id: user.device_id, is_anonymous: true }
+      : { id: user.id, email: user.email };
+
     const accessToken = jwt.sign(
-      { id: user.id, email: user.email },
+      payload,
       process.env.JWT_ACCESS_SECRET,
       { expiresIn: '15m' }
     );

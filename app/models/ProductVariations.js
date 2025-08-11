@@ -2,7 +2,6 @@ module.exports = (sequelize, DataTypes) => {
     const ProductVariation = sequelize.define('ProductVariation', {
         id: { type: DataTypes.BIGINT, primaryKey: true, autoIncrement: true },
         sku: { type: DataTypes.STRING, unique: true },
-        price: DataTypes.DECIMAL(10,2),
         stock_quantity: DataTypes.BIGINT
     }, {
         tableName: 'product_variations',
@@ -11,7 +10,7 @@ module.exports = (sequelize, DataTypes) => {
 
     ProductVariation.associate = models => {
         ProductVariation.belongsTo(models.Product, {
-            foreignKey: 'product_id',
+            foreignKey: 'id',
             as: 'product'
         });
 

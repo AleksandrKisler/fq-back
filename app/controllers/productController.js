@@ -7,7 +7,8 @@ const {
   Attribute,
   AttributeValue,
   Discount,
-  ProductDiscount
+  ProductDiscount,
+  ProductParams
 } = require('../models');
 const {Op} = require('sequelize');
 const Sequelize = require('sequelize');
@@ -26,233 +27,228 @@ const SORT_DIRECTIONS = {
 };
 
 // Максимальный лимит для запроса
-const MAX_LIMIT = 100;
+const MAX_LIMIT = 1000;
+
+function getPrice(discount, price) {
+  if (discount) {
+    return {
+      current: Math.ceil(price - (discount.type === 'percent' ? (discount.value / 100) * price : discount.value)),
+      old: parseInt(price),
+    }
+  } else {
+    return {
+      current: parseInt(price),
+      old: null
+    }
+  }
+}
 
 /**
  * Получение списка товаров с фильтрацией, сортировкой и пагинацией
  * @param {Object} req - Объект запроса Express
  * @param {Object} res - Объект ответа Express
  */
+
 exports.getProducts = async (req, res) => {
-    try {
-        const {
-            source = null,
-            sourceType = PRODUCTS_SOURCE_TYPES.CATEGORY,
-            filters = [],
-            sort = 'createdAt',
-            direction = SORT_DIRECTIONS.DESC,
-            limit = 20,
-            offset = 0
-        } = req.body;
+  try {
+    const {
+      source = null,
+      sourceType = PRODUCTS_SOURCE_TYPES.CATEGORY,
+      filters = [],
+      sort = 'createdAt',
+      direction = SORT_DIRECTIONS.DESC,
+      limit = 20,
+      offset = 0
+    } = req.body;
 
-        const validatedLimit = Math.min(parseInt(limit), MAX_LIMIT);
-        const validatedOffset = parseInt(offset);
-        const where = {};
-        const include = [{
-            model: ProductVariation,
-            as: 'variations',
-            required: true,
-            attributes: ['id', 'price', 'stock_quantity'],
-        }];
+    const validatedLimit = Math.min(parseInt(limit), MAX_LIMIT);
+    const validatedOffset = parseInt(offset);
+    const where = {};
+    const include = [];
 
-        // 1. Фильтрация по источнику
-        if (source && sourceType) {
-            switch (sourceType) {
-                case PRODUCTS_SOURCE_TYPES.CATEGORY:
-                    include.push({
-                        model: Category,
-                        as: 'category',
-                        where: { [Op.or]: [{id: source}, {slug: source}] },
-                        attributes: []
-                    });
-                    break;
-                case PRODUCTS_SOURCE_TYPES.COLLECTION:
-                    include.push({
-                        model: CollectionProduct,
-                        attributes: [],
-                        include: [{
-                            model: Collection,
-                            where: { [Op.or]: [{id: source}, {slug: source}] },
-                            attributes: []
-                        }]
-                    });
-                    break;
-            }
-        }
-
-        // 2. Применение фильтров
-        const attributeFilters = [];
-        let inStockFilter = false;
-
-        filters.forEach(filter => {
-            switch (filter.type) {
-                case 'PRICE':
-                    include[0].where.price = {
-                        [Op.between]: [filter.data.min || 0, filter.data.max || 1000000]
-                    };
-                    break;
-                case 'ATTRIBUTE':
-                    if (filter.data.values?.length) {
-                        attributeFilters.push(...filter.data.values);
-                    }
-                    break;
-                case 'STOCK':
-                    inStockFilter = true;
-                    break;
-            }
-        });
-
-        if (inStockFilter) {
-            include[0].where.stock_quantity = { [Op.gt]: 0 };
-        }
-
-        // 3. Добавление фильтра по атрибутам
-        if (attributeFilters.length > 0) {
-            include[0].include = [{
-                model: AttributeValue,
-                as: 'attributes',
-                where: { id: { [Op.in]: attributeFilters } },
-                attributes: [],
-                include: [{ model: Attribute, as: 'attribute', attributes: [] }]
-            }];
-        }
-
-        // 4. Сортировка
-        const order = [];
-        const validSortFields = ['title', 'price', 'createdAt', 'updatedAt'];
-
-        if (validSortFields.includes(sort)) {
-            if (sort === 'price') {
-                order.push([Sequelize.literal('(SELECT MIN(price) FROM product_variations WHERE product_id = Product.id)'), direction]);
-            } else {
-                order.push([sort, direction]);
-            }
-        } else {
-            order.push(['created_at', 'DESC']);
-        }
-
-        // 5. Основной запрос товаров
-        const { count, rows: products } = await Product.findAndCountAll({
-            where,
-            include,
-            attributes: ['id', 'title', 'sku', 'slug'],
-            order,
-            limit: validatedLimit,
-            offset: validatedOffset,
-            subQuery: false,
-            distinct: true
-        });
-
-        // 6. Сбор данных для оптимизации
-        const productIds = products.map(p => p.id);
-
-        // Запрос минимальных цен
-        const minPrices = await ProductVariation.findAll({
-            where: { product_id: { [Op.in]: productIds } },
-            attributes: [
-                'product_id',
-                [Sequelize.fn('MIN', Sequelize.col('price')), 'minPrice']
-            ],
-            group: ['product_id'],
-            raw: true
-        });
-
-        const priceMap = minPrices.reduce((acc, row) => {
-            acc[row.product_id] = parseFloat(row.minPrice);
-            return acc;
-        }, {});
-
-        // Запрос атрибутов
-        const attributesData = await ProductVariation.findAll({
-            where: { product_id: { [Op.in]: productIds } },
+    // 1. Фильтрация по источнику
+    if (source && sourceType) {
+      switch (sourceType) {
+        case PRODUCTS_SOURCE_TYPES.CATEGORY:
+          include.push({
+            model: Category,
+            as: 'category',
+            where: {[Op.or]: [{id: source}, {slug: source}]},
+            attributes: []
+          });
+          break;
+        case PRODUCTS_SOURCE_TYPES.COLLECTION:
+          include.push({
+            model: CollectionProduct,
+            attributes: [],
             include: [{
-                model: AttributeValue,
-                as: 'attributes',
-                include: [{
-                    model: Attribute,
-                    as: 'attribute',
-                    where: { name: { [Op.in]: ['Цвет', 'Размер'] } }
-                }]
+              model: Collection,
+              where: {[Op.or]: [{id: source}, {slug: source}]},
+              attributes: []
             }]
-        });
-
-        // 7. Группировка атрибутов по товарам
-        const attributesMap = {};
-        attributesData.forEach(variation => {
-            const productId = variation.product_id;
-            if (!attributesMap[productId]) {
-                attributesMap[productId] = { colors: new Map(), sizes: new Map() };
-            }
-
-            variation.attributes.forEach(attr => {
-                const attrName = attr.attribute?.name;
-                if (attrName === 'Цвет') {
-                    if (!attributesMap[productId].colors.has(attr.id)) {
-                        attributesMap[productId].colors.set(attr.id, {
-                            id: attr.id,
-                            value: attr.value,
-                            hex_code: attr.hex_code,
-                            slug: attr.value.toLowerCase().replace(/\s+/g, '-')
-                        });
-                    }
-                } else if (attrName === 'Размер') {
-                    if (!attributesMap[productId].sizes.has(attr.id)) {
-                        attributesMap[productId].sizes.set(attr.id, {
-                            id: attr.id,
-                            value: attr.value,
-                            slug: attr.value.toLowerCase().replace(/\s+/g, '-')
-                        });
-                    }
-                }
-            });
-        });
-
-        // 8. Форматирование ответа
-        const result = products.map(product => {
-            const productId = product.id;
-            const colors = Array.from(attributesMap[productId]?.colors.values() || []);
-            const sizes = Array.from(attributesMap[productId]?.sizes.values() || []);
-
-            const options = [];
-            if (colors.length) options.push({
-                title: 'Цвет',
-                type: 'COLOR',
-                values: colors
-            });
-            if (sizes.length) options.push({
-                title: 'Размер',
-                type: 'SIZE',
-                values: sizes
-            });
-
-            return {
-                id: productId,
-                title: product.title,
-                sku: product.sku,
-                slug: product.slug,
-                price: {
-                    current: priceMap[productId] || 0,
-                    old: null
-                },
-                options,
-                params: []
-            };
-        });
-
-        res.json({
-            data: result,
-            offset: validatedOffset,
-            limit: validatedLimit,
-            total: count.length
-        });
-
-    } catch (error) {
-        console.error('Ошибка при получении товаров:', error);
-        res.status(500).json({
-            code: 'SERVER_ERROR',
-            message: 'Ошибка сервера при получении товаров'
-        });
+          });
+          break;
+      }
     }
+
+    // 2. Применение фильтров
+    const attributeFilters = [];
+    let inStockFilter = false;
+
+    filters.forEach(filter => {
+      switch (filter.type) {
+        case 'PRICE':
+          include[0].where.price = {
+            [Op.between]: [filter.data.min || 0, filter.data.max || 1000000]
+          };
+          break;
+        case 'ATTRIBUTE':
+          if (filter.data.values?.length) {
+            attributeFilters.push(...filter.data.values);
+          }
+          break;
+        case 'STOCK':
+          inStockFilter = true;
+          break;
+      }
+    });
+
+    if (inStockFilter) {
+      include[0].where.stock_quantity = {[Op.gt]: 0};
+    }
+
+    // 3. Добавление фильтра по атрибутам
+    if (attributeFilters.length > 0) {
+      include[0].include = [{
+        model: AttributeValue,
+        as: 'attributes',
+        where: {id: {[Op.in]: attributeFilters}},
+        attributes: [],
+        include: [{model: Attribute, as: 'attribute', attributes: []}]
+      }];
+    }
+
+    // 4. Сортировка
+    const order = [];
+    const validSortFields = ['title', 'createdAt', 'updatedAt'];
+
+    if (validSortFields.includes(sort)) {
+      order.push([sort, direction]);
+    } else {
+      order.push(['created_at', 'DESC']);
+    }
+
+    // 5. Основной запрос товаров
+    const {count, rows: products} = await Product.findAndCountAll({
+      where,
+      include: [...include,
+        {
+          where: {is_active: true},
+          model: Discount,
+          as: 'discounts',
+          through: {attributes: []},
+          required: false
+        }
+      ],
+      attributes: ['id', 'title', 'sku', 'slug', 'price', 'category_id'],
+      order,
+      limit: validatedLimit,
+      offset: validatedOffset,
+      subQuery: false,
+      distinct: true
+    });
+
+    const productIds = products.map(p => p.id);
+
+    const attributesData = await ProductVariation.findAll({
+      where: {product_id: {[Op.in]: productIds}},
+      include: [{
+        model: AttributeValue,
+        as: 'attributes',
+        include: [{
+          model: Attribute,
+          as: 'attribute',
+          where: {name: {[Op.in]: ['Цвет', 'Размер']}}
+        }]
+      }],
+
+    });
+
+
+    // 7. Группировка атрибутов по товарам
+    const attributesMap = {};
+    attributesData.forEach(variation => {
+      const productId = variation.product_id;
+      if (!attributesMap[productId]) {
+        attributesMap[productId] = {colors: new Map(), sizes: new Map()};
+      }
+
+      variation.attributes.forEach(attr => {
+        const attrName = attr.attribute?.name;
+        if (attrName === 'Цвет') {
+          if (!attributesMap[productId].colors.has(attr.id)) {
+            attributesMap[productId].colors.set(attr.id, {
+              id: attr.id,
+              value: attr.value,
+              hex_code: attr.hex_code,
+              slug: attr.value.toLowerCase().replace(/\s+/g, '-')
+            });
+          }
+        } else if (attrName === 'Размер') {
+          if (!attributesMap[productId].sizes.has(attr.id)) {
+            attributesMap[productId].sizes.set(attr.id, {
+              id: attr.id,
+              value: attr.value,
+              slug: attr.value.toLowerCase().replace(/\s+/g, '-')
+            });
+          }
+        }
+      });
+    });
+
+    // 8. Форматирование ответа
+    const result = products.map(product => {
+      const productId = product.id;
+      const discount = product.discounts[0] ?? undefined
+      const colors = Array.from(attributesMap[productId]?.colors.values() || []);
+      const sizes = Array.from(attributesMap[productId]?.sizes.values() || []);
+
+      const options = [];
+      if (colors.length) options.push({
+        title: 'Цвет',
+        type: 'COLOR',
+        values: colors
+      });
+      if (sizes.length) options.push({
+        title: 'Размер',
+        type: 'SIZE',
+        values: sizes
+      });
+
+      return {
+        id: productId,
+        title: product.title,
+        sku: product.sku,
+        slug: product.slug,
+        price: getPrice(discount, product.price),
+        options,
+      };
+    });
+
+    res.json({
+      data: result,
+      offset: validatedOffset,
+      limit: validatedLimit,
+      total: count
+    });
+
+  } catch (error) {
+    console.error('Ошибка при получении товаров:', error);
+    res.status(500).json({
+      code: 'SERVER_ERROR',
+      message: 'Ошибка сервера при получении товаров'
+    });
+  }
 };
 
 /**
@@ -271,6 +267,17 @@ exports.getProductExtended = async (req, res) => {
           as: 'category'
         },
         {
+          model: ProductParams,
+          as: 'params'
+        },
+        {
+          where: {is_active: true},
+          model: Discount,
+          as: 'discounts',
+          through: {attributes: []},
+          required: false
+        },
+        {
           model: ProductVariation,
           as: 'variations',
           include: [
@@ -285,11 +292,10 @@ exports.getProductExtended = async (req, res) => {
               ]
             }
           ]
-        }
+        },
       ]
     });
 
-    console.log(product);
 
     if (!product) {
       return res.status(404).json({code: 'NOT_FOUND', message: 'Товар не найден'});
@@ -298,6 +304,9 @@ exports.getProductExtended = async (req, res) => {
     // Сбор уникальных значений атрибутов
     const colorOptions = [];
     const sizeOptions = [];
+
+    const discount = product.discounts[0] ?? undefined
+
 
     product.variations.forEach(variation => {
       variation.attributes.forEach(attrValue => { // Исправлено обращение
@@ -325,11 +334,14 @@ exports.getProductExtended = async (req, res) => {
         }
       });
     });
-    const params = [
-      {id: 1, title: 'Материал', value: 'Натуральная кожа'},
-      {id: 2, title: 'Сезон', value: 'Всесезонный'},
-      {id: 3, title: 'Страна производства', value: 'Италия'}
-    ];
+
+    const params = product.params.map(item => {
+      return {
+        id: item.id,
+        title: item.title,
+        value: item.value
+      }
+    });
 
     // Форматирование ответа
     const response = {
@@ -338,10 +350,7 @@ exports.getProductExtended = async (req, res) => {
       sku: product.sku,
       slug: product.slug,
       images: product.main_image ? [product.main_image] : [],
-      price: {
-        current: Math.min(...product.variations.map(v => v.price)),
-        old: null
-      },
+      price: getPrice(discount, product.price),
       options: [
         {
           title: 'Цвет',
@@ -469,28 +478,86 @@ exports.getSimilarProducts = async (req, res) => {
       },
       limit,
       offset,
-      include: [{
-        model: ProductVariation,
-        attributes: [
-          [Sequelize.fn('MIN', Sequelize.col('price')), 'minPrice']
-        ]
-      }]
+      include: [
+        {
+          model: ProductVariation,
+          as: 'variations',
+          include: [
+            {
+              model: AttributeValue, // Исправлено с VariationAttribute
+              as: 'attributes',     // Исправлен псевдоним
+              include: [
+                {
+                  model: Attribute,
+                  as: 'attribute' // Исправлен псевдоним
+                }
+              ]
+            }
+          ]
+        },
+        {
+          where: {is_active: true},
+          model: Discount,
+          as: 'discounts',
+          through: {attributes: []},
+          required: false
+        },
+      ]
     });
 
     // Форматирование ответа
-    const products = similarProducts.map(product => ({
+    const products = similarProducts.map(product => {
+      const colorOptions = [];
+      const sizeOptions = [];
+      const discount = product?.discounts[0] ?? undefined
+      product.variations.forEach(variation => {
+        variation.attributes.forEach(attrValue => { // Исправлено обращение
+          const attrName = attrValue.attribute.name; // Исправлен путь
+
+          if (attrName === 'Цвет') {
+            if (!colorOptions.find(c => c.id === attrValue.id)) {
+              colorOptions.push({
+                id: attrValue.id,
+                slug: attrValue.value.toLowerCase().replace(/\s+/g, '-'),
+                value: attrValue.value,
+                hex_code: attrValue.hex_code
+              });
+            }
+          }
+
+          if (attrName === 'Размер') {
+            if (!sizeOptions.find(s => s.id === attrValue.id)) {
+              sizeOptions.push({
+                id: attrValue.id,
+                slug: attrValue.value.toLowerCase().replace(/\s+/g, '-'),
+                value: attrValue.value
+              });
+            }
+          }
+        });
+      });
+
+      return {
       id: product.id,
       title: product.title,
       sku: product.sku,
       slug: product.slug,
       images: product.main_image ? [product.main_image] : [],
-      price: {
-        current: product.variations[0].dataValues.minPrice,
-        old: null
-      },
-      options: [], // Упрощенный формат
+      price: getPrice(discount, product.price),
+      options: [
+        {
+          title: 'Цвет',
+          type: 'COLOR',
+          values: colorOptions
+        },
+        {
+          title: 'Размер',
+          type: 'SIZE',
+          values: sizeOptions
+        }
+      ],
       params: []
-    }));
+    }});
 
     res.json({
       data: products,
@@ -507,3 +574,46 @@ exports.getSimilarProducts = async (req, res) => {
     });
   }
 };
+
+
+exports.getCatalog = async (req, res) => {
+  try {
+    const categories = await Category.findAll({
+      where: {parent_id: null}, // Только корневые категории
+      attributes: [
+        'id',
+        'title',
+        'slug',
+        [
+          Sequelize.literal(`
+              (SELECT COUNT(*)
+               FROM products
+               WHERE products.category_id IN (
+                 SELECT id FROM categories WHERE parent_id = "Category".id
+                 UNION
+                 SELECT "Category".id
+               )
+              )
+            `),
+          'count'
+        ]
+      ],
+      include: [{
+        model: Category,
+        as: 'children',
+        attributes: ['id', 'title', 'slug'] // Дочерние без count
+      }],
+      order: [['title', 'ASC']]
+    });
+
+    return res.json(
+      {catalog: categories}
+    );
+  } catch (error) {
+    console.error('Catalog error:', error);
+    return res.status(500).json({
+      code: 'NOT_FOUND',
+      message: 'Ошибка при получении каталога'
+    });
+  }
+}

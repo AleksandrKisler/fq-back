@@ -2,6 +2,8 @@ const express = require('express');
 const sequelize = require('./config');
 const authRoutes = require('./routes/authRoutes');
 const productRoutes = require('./routes/productRoutes');
+const cartRoutes = require('./routes/cartRoutes');
+const wishlistRoutes = require('./routes/wishlistRoutes');
 
 const app = express();
 app.use(express.json());
@@ -20,6 +22,8 @@ app.get('/api/v1/health', (req, res) => {
 // Подключение роутов
 app.use('/api/v1/', authRoutes);
 app.use('/api/v1/', productRoutes);
+app.use('/api/v1/', cartRoutes);
+app.use('/api/v1/', wishlistRoutes);
 
 // Функция запуска миграций
 async function runMigrations() {

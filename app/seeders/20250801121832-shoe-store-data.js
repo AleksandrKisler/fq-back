@@ -7,7 +7,7 @@ module.exports = {
       { title: 'Кроссовки', slug: 'sneakers' },
       { title: 'Ботинки', slug: 'boots' },
       { title: 'Сандалии', slug: 'sandals' },
-      { title: 'Туфли', slug: 'shoes' }
+      { title: 'Туфли', slug: 'shoes-t' }
     ], { returning: true });
 
     const attributes = await queryInterface.bulkInsert('attributes', [
@@ -58,7 +58,8 @@ module.exports = {
           category_id: category.id,
           description: `Стильная и удобная обувь ${category.title.toLowerCase()} от ${brand}. Идеальный выбор для повседневной носки.`,
           slug: `${category.slug}-${brand.toLowerCase()}-${type.toLowerCase()}-${uuidv4().slice(0, 8)}`,
-          sku: `${brand.slice(0, 3).toUpperCase()}${category.id}${i}`
+          sku: `${brand.slice(0, 3).toUpperCase()}${category.id}${i}`,
+          price: 8000 + Math.floor(Math.random() * 7000), // Цена от 8000 до 15000
         });
       }
     }
@@ -75,7 +76,6 @@ module.exports = {
           variations.push({
             product_id: product.id,
             sku: `${product.sku}-${size}-${color.value.slice(0, 3)}`,
-            price: 3000 + Math.floor(Math.random() * 7000), // Цена от 3000 до 10000
             stock_quantity: Math.floor(Math.random() * 50) + 10 // Количество от 10 до 60
           });
         }

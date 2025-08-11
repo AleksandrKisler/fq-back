@@ -7,7 +7,8 @@ module.exports = (sequelize, DataTypes) => {
         email: { type: DataTypes.STRING, unique: true },
         isConfirmed: { type: DataTypes.BOOLEAN, allowNull: true, default: true, defaultValue: false },
         password: { type: DataTypes.STRING, allowNull: false },
-
+        deviceId: { type: DataTypes.STRING, unique: true, allowNull: true }, // Уникальный идентификатор устройства
+        isAnonymous: { type: DataTypes.BOOLEAN, defaultValue: false }
     }, {
         tableName: 'users',
         timestamps: true,
