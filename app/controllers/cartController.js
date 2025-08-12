@@ -1,23 +1,18 @@
 const { Cart, Product, ProductVariation } = require('../models');
-
+const { Op } = require('sequelize');
   // Получение корзины пользователя
 exports.getCart = async (req, res) => {
     try {
       const userId = req.user.id; // ID из аутентификации
 
       const cartItems = await Cart.findAll({
-        where: { user_id: userId },
+        where: { id: userId },
         include: [
           {
             model: Product,
             as: 'product',
             attributes: ['id', 'title', 'slug', 'price']
           },
-          {
-            model: ProductVariation,
-            as: 'variation',
-            attributes: ['id', 'sku', 'attributes']
-          }
         ],
         order: [['added_at', 'DESC']]
       });
@@ -66,7 +61,8 @@ exports.getCart = async (req, res) => {
 exports.addItem = async (req, res) => {
     try {
       const userId = req.user.id;
-      const { productId, variationId, quantity = 1, attributes } = req.body;
+      const { productId, variationId, quantity = 1 } = req.body;
+      console.log(productId, variationId);
 
       // Проверка существования товара
       const product = await Product.findByPk(productId);
@@ -79,15 +75,14 @@ exports.addItem = async (req, res) => {
 
       // Проверка вариации
       let variationPrice = product.price;
-      if (variation_id) {
-        const variationId = await ProductVariation.findByPk(variationId);
-        if (!variation || variation.product_id !== productId) {
+      if (variationId) {
+        const variation = await ProductVariation.findByPk(variationId);
+        if (!variation || variation.productId === productId) {
           return res.status(400).json({
             success: false,
             message: 'Неверная вариация товара'
           });
         }
-        variationPrice = variation.price;
       }
 
       // Расчет скидки (заглушка - здесь должна быть реальная логика)
@@ -97,14 +92,14 @@ exports.addItem = async (req, res) => {
       const [cartItem, created] = await Cart.findOrCreate({
         where: {
           user_id: userId,
-          productId,
+          product_id: productId,
           variation_id: variationId || null
         },
         defaults: {
           quantity,
           price_at_add: variationPrice,
           discount_at_add: discount,
-          attributes
+          attributes: JSON.stringify({'test-attributes': 'a'})
         }
       });
 
@@ -131,7 +126,7 @@ exports.addItem = async (req, res) => {
 exports.updateItem = async (req, res) => {
     try {
       const userId = req.user.id;
-      const { id } = req.params;
+      const { itemId } = req.params;
       const { quantity } = req.body;
 
       if (quantity <= 0) {
@@ -142,7 +137,7 @@ exports.updateItem = async (req, res) => {
       }
 
       const cartItem = await Cart.findOne({
-        where: { id, user_id: userId }
+        where: { id: itemId, user_id: userId }
       });
 
       if (!cartItem) {
@@ -169,41 +164,15 @@ exports.updateItem = async (req, res) => {
     }
   }
 
-exports.removeItem = async (req, res) => {
-    try {
-      const userId = req.user.id;
-      const { id } = req.params;
-
-      const deleted = await Cart.destroy({
-        where: { id, user_id: userId }
-      });
-
-      if (!deleted) {
-        return res.status(404).json({
-          success: false,
-          message: 'Элемент корзины не найден'
-        });
-      }
-
-      return res.json({
-        success: true,
-        message: 'Товар удален из корзины'
-      });
-    } catch (error) {
-      console.error('Remove from cart error:', error);
-      return res.status(500).json({
-        success: false,
-        message: 'Ошибка при удалении из корзины'
-      });
-    }
-  }
-
 exports.clearCart = async (req, res) => {
      try {
-      const userId = req.user.id;
+      // const userId = req.user.id;
+       const { itemIds } = req.body;
 
       await Cart.destroy({
-        where: { user_id: userId }
+        where: { id: {
+       [Op.in]: itemIds
+          } }
       });
 
       return res.json({

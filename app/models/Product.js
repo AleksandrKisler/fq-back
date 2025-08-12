@@ -1,4 +1,3 @@
-const bcrypt = require("bcrypt");
 module.exports = (sequelize, DataTypes) => {
   const Product = sequelize.define('Product', {
     id: {type: DataTypes.BIGINT, primaryKey: true, autoIncrement: true},

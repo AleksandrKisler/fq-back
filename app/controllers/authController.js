@@ -71,27 +71,31 @@ module.exports = {
   async createAnonymousUser(req, res) {
     try {
       const {device_id} = req.body;
-
       if (!device_id) {
         return res.status(422).json({error: 'Device ID обязателен'});
       }
-
+      console.log(device_id);
       let user = await User.findOne({where: {device_id}});
 
       if (!user) {
         user = await User.create({
-          device_id,
-          is_anonymous: true
+          deviceId: device_id,
+          name: 'Anonymous User',
+          email: `${device_id}-box@anon.com`,
+          isAnonymous: true,
+          password: 'device'
         });
       }
 
       const tokens = jwt.generateTokens(user);
 
+      console.log(user, tokens);
+
       res.status(200).json({
         user: {
           id: user.id,
           device_id: user.device_id,
-          is_anonymous: user.is_anonymous
+          is_anonymous: user.is_anonymous,
         },
         token: {...tokens}
       });
