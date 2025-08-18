@@ -4,6 +4,13 @@ const authRoutes = require('./routes/authRoutes');
 const productRoutes = require('./routes/productRoutes');
 const cartRoutes = require('./routes/cartRoutes');
 const wishlistRoutes = require('./routes/wishlistRoutes');
+const articleRoutes = require('./routes/articleRoutes');
+const bannerRoutes = require('./routes/bannerRoutes');
+const selectionRoutes = require('./routes/selectionRoutes');
+const collectionRoutes = require('./routes/collectionRoutes');
+const homePageRoutes = require('./routes/homePageRoutes');
+
+
 
 const app = express();
 app.use(express.json());
@@ -24,6 +31,11 @@ app.use('/api/v1/', authRoutes);
 app.use('/api/v1/', productRoutes);
 app.use('/api/v1/', cartRoutes);
 app.use('/api/v1/', wishlistRoutes);
+app.use('/api/v1/', articleRoutes);
+app.use('/api/v1/', bannerRoutes);
+app.use('/api/v1/', selectionRoutes);
+app.use('/api/v1/', collectionRoutes);
+app.use('/api/v1/', homePageRoutes);
 
 // Функция запуска миграций
 async function runMigrations() {

@@ -9,9 +9,12 @@ module.exports = {
       title: { type: Sequelize.STRING(255), allowNull: false },
       description: { type: Sequelize.TEXT, allowNull: true },
       source_id: { type: Sequelize.TEXT, allowNull: true },
-      image_position: { type: Sequelize.STRING(255), allowNull: true },
+      image_position: { type: Sequelize.STRING(255), allowNull: false, defaultValue: '' },
       image_url: { type: Sequelize.STRING(255), allowNull: false },
       is_active: { type: Sequelize.BOOLEAN, allowNull: true, defaultValue: false },
+      created_at: { type: Sequelize.DATE, defaultValue: Sequelize.literal('CURRENT_TIMESTAMP') },
+      updated_at: { type: Sequelize.DATE, defaultValue: Sequelize.literal('CURRENT_TIMESTAMP') },
+      deleted_at: { type: Sequelize.DATE, defaultValue: Sequelize.literal('CURRENT_TIMESTAMP') },
     });
   },
 
