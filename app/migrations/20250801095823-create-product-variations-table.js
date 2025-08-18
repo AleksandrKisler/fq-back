@@ -8,7 +8,7 @@ module.exports = {
         references: { model: 'products', key: 'id' }
       },
       sku: { type: Sequelize.STRING(255), unique: true },
-      stock_quantity: { type: Sequelize.BIGINT, allowNull: false }
+      stock_quantity: { type: Sequelize.BIGINT, allowNull: false, defaultValue: 0 },
     });
   },
   async down(queryInterface) {

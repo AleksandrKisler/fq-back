@@ -8,7 +8,9 @@ const {
   AttributeValue,
   Discount,
   ProductDiscount,
-  ProductParams
+  ProductParams,
+  Image,            // +++
+  ProductImage
 } = require('../models');
 const {Op} = require('sequelize');
 const Sequelize = require('sequelize');
@@ -43,6 +45,23 @@ function getPrice(discount, price) {
   }
 }
 
+function buildImagesMap(pivots) {
+  const map = {};
+  for (const p of pivots) {
+    if (!p || !p.image) continue;
+    if (!map[p.product_id]) map[p.product_id] = [];
+    map[p.product_id].push({
+      id: p.image.id,
+      url: p.image.file_url,
+      path: p.image.file_path,
+      sort_order: p.sort_order ?? 0
+    });
+  }
+  // упорядочим
+  Object.values(map).forEach(arr => arr.sort((a,b) => (a.sort_order - b.sort_order) || (a.id - b.id)));
+  return map;
+}
+
 /**
  * Получение списка товаров с фильтрацией, сортировкой и пагинацией
  * @param {Object} req - Объект запроса Express
@@ -63,10 +82,11 @@ exports.getProducts = async (req, res) => {
 
     const validatedLimit = Math.min(parseInt(limit), MAX_LIMIT);
     const validatedOffset = parseInt(offset);
+
     const where = {};
     const include = [];
 
-    // 1. Фильтрация по источнику
+    // Источник (категория/коллекция)
     if (source && sourceType) {
       switch (sourceType) {
         case PRODUCTS_SOURCE_TYPES.CATEGORY:
@@ -74,79 +94,96 @@ exports.getProducts = async (req, res) => {
             model: Category,
             as: 'category',
             where: {[Op.or]: [{id: source}, {slug: source}]},
-            attributes: []
+            attributes: [],
+            required: true
           });
           break;
         case PRODUCTS_SOURCE_TYPES.COLLECTION:
           include.push({
             model: CollectionProduct,
             attributes: [],
+            required: true,
             include: [{
               model: Collection,
               where: {[Op.or]: [{id: source}, {slug: source}]},
-              attributes: []
+              attributes: [],
+              required: true
             }]
           });
           break;
       }
     }
 
-    // 2. Применение фильтров
+    // Фильтры
     const attributeFilters = [];
     let inStockFilter = false;
 
-    filters.forEach(filter => {
+    for (const filter of (filters || [])) {
       switch (filter.type) {
-        case 'PRICE':
-          include[0].where.price = {
-            [Op.between]: [filter.data.min || 0, filter.data.max || 1000000]
-          };
+        case 'PRICE': {
+          const min = Number(filter.data?.min ?? 0);
+          const max = Number(filter.data?.max ?? 1000000);
+          where.price = { [Op.between]: [min, max] };
           break;
-        case 'ATTRIBUTE':
-          if (filter.data.values?.length) {
+        }
+        case 'ATTRIBUTE': {
+          if (Array.isArray(filter.data?.values) && filter.data.values.length) {
             attributeFilters.push(...filter.data.values);
           }
           break;
-        case 'STOCK':
+        }
+        case 'STOCK': {
           inStockFilter = true;
           break;
+        }
       }
-    });
-
-    if (inStockFilter) {
-      include[0].where.stock_quantity = {[Op.gt]: 0};
     }
 
-    // 3. Добавление фильтра по атрибутам
-    if (attributeFilters.length > 0) {
-      include[0].include = [{
-        model: AttributeValue,
-        as: 'attributes',
-        where: {id: {[Op.in]: attributeFilters}},
+    // Вариации — добавляем include только когда это нужно
+    if (inStockFilter || attributeFilters.length > 0) {
+      const varInclude = {
+        model: ProductVariation,
+        as: 'variations',
         attributes: [],
-        include: [{model: Attribute, as: 'attribute', attributes: []}]
-      }];
+        required: !!inStockFilter || attributeFilters.length > 0
+      };
+
+      if (inStockFilter) {
+        varInclude.where = { stock_quantity: { [Op.gt]: 0 } };
+      }
+
+      if (attributeFilters.length > 0) {
+        varInclude.include = [{
+          model: AttributeValue,
+          as: 'attributes',
+          attributes: [],
+          where: { id: { [Op.in]: attributeFilters } },
+          include: [{ model: Attribute, as: 'attribute', attributes: [] }]
+        }];
+      }
+
+      include.push(varInclude);
     }
 
-    // 4. Сортировка
+    // Сортировка
     const order = [];
     const validSortFields = ['title', 'createdAt', 'updatedAt'];
-
     if (validSortFields.includes(sort)) {
       order.push([sort, direction]);
     } else {
       order.push(['created_at', 'DESC']);
     }
 
-    // 5. Основной запрос товаров
-    const {count, rows: products} = await Product.findAndCountAll({
+    // Основной запрос
+    const { count, rows: products } = await Product.findAndCountAll({
       where,
-      include: [...include,
+      include: [
+        ...include,
         {
-          where: {is_active: true},
+          where: { is_active: true },
           model: Discount,
           as: 'discounts',
-          through: {attributes: []},
+          through: { attributes: [] },
           required: false
         }
       ],
@@ -154,36 +191,49 @@ exports.getProducts = async (req, res) => {
       order,
       limit: validatedLimit,
       offset: validatedOffset,
-      subQuery: false,
-      distinct: true
+      distinct: true,
+      subQuery: false
     });
 
     const productIds = products.map(p => p.id);
-
-    const attributesData = await ProductVariation.findAll({
-      where: {product_id: {[Op.in]: productIds}},
+    console.log('productIds', productIds);
+    // Атрибуты для витрины (цвет/размер)
+    const attributesData = productIds.length ? await ProductVariation.findAll({
+      where: { product_id: { [Op.in]: productIds } },
       include: [{
         model: AttributeValue,
         as: 'attributes',
         include: [{
           model: Attribute,
           as: 'attribute',
-          where: {name: {[Op.in]: ['Цвет', 'Размер']}}
+          where: { name: { [Op.in]: ['Цвет', 'Размер'] } }
         }]
       }],
+      attributes: ['product_id']
+    }) : [];
 
-    });
+    // Картинки одним запросом
+    const pivots = productIds.length ? await ProductImage.findAll({
+      where: { product_id: { [Op.in]: productIds } },
+      attributes: {                       // <- ключевой момент
+        include: ['product_id', 'image_id', 'sort_order'],
+      },
+      include: [{ model: Image, attributes: ['id','file_url','file_path'], as: 'image' }],
+      order: [['sort_order','ASC'], ['image_id','ASC']],
+    }) : [];
 
 
-    // 7. Группировка атрибутов по товарам
+    const imagesMap = buildImagesMap(pivots);
+    console.log('imagesMap', imagesMap);
+
+    // Группировка атрибутов
     const attributesMap = {};
     attributesData.forEach(variation => {
       const productId = variation.product_id;
       if (!attributesMap[productId]) {
-        attributesMap[productId] = {colors: new Map(), sizes: new Map()};
+        attributesMap[productId] = { colors: new Map(), sizes: new Map() };
       }
-
-      variation.attributes.forEach(attr => {
+      (variation.attributes || []).forEach(attr => {
         const attrName = attr.attribute?.name;
         if (attrName === 'Цвет') {
           if (!attributesMap[productId].colors.has(attr.id)) {
@@ -191,7 +241,7 @@ exports.getProducts = async (req, res) => {
               id: attr.id,
               value: attr.value,
               hex_code: attr.hex_code,
-              slug: attr.value.toLowerCase().replace(/\s+/g, '-')
+              slug: String(attr.value).toLowerCase().replace(/\s+/g,'-')
             });
           }
         } else if (attrName === 'Размер') {
@@ -199,57 +249,48 @@ exports.getProducts = async (req, res) => {
             attributesMap[productId].sizes.set(attr.id, {
               id: attr.id,
               value: attr.value,
-              slug: attr.value.toLowerCase().replace(/\s+/g, '-')
+              slug: String(attr.value).toLowerCase().replace(/\s+/g,'-')
             });
           }
         }
       });
     });
 
-    // 8. Форматирование ответа
+    // Ответ
     const result = products.map(product => {
       const productId = product.id;
-      const discount = product.discounts[0] ?? undefined
+      const discount = product.discounts?.[0];
       const colors = Array.from(attributesMap[productId]?.colors.values() || []);
-      const sizes = Array.from(attributesMap[productId]?.sizes.values() || []);
+      const sizes  = Array.from(attributesMap[productId]?.sizes.values()  || []);
 
       const options = [];
-      if (colors.length) options.push({
-        title: 'Цвет',
-        type: 'COLOR',
-        values: colors
-      });
-      if (sizes.length) options.push({
-        title: 'Размер',
-        type: 'SIZE',
-        values: sizes
-      });
+      if (colors.length) options.push({ title: 'Цвет',  type: 'COLOR', values: colors });
+      if (sizes.length)  options.push({ title: 'Размер', type: 'SIZE',  values: sizes });
+
+      const getUrls = (images) => {
+        if (!images.length) return [];
+        console.log(images)
+        return images.map(p => p.url)
+      }
 
       return {
         id: productId,
         title: product.title,
         sku: product.sku,
         slug: product.slug,
+        images: getUrls(imagesMap[productId] || []),            // <--- ФОТО
         price: getPrice(discount, product.price),
-        options,
+        options
       };
     });
 
-    res.json({
-      data: result,
-      offset: validatedOffset,
-      limit: validatedLimit,
-      total: count
-    });
-
+    res.json({ data: result, offset: validatedOffset, limit: validatedLimit, total: count });
   } catch (error) {
     console.error('Ошибка при получении товаров:', error);
-    res.status(500).json({
-      code: 'SERVER_ERROR',
-      message: 'Ошибка сервера при получении товаров'
-    });
+    res.status(500).json({ code: 'SERVER_ERROR', message: 'Ошибка сервера при получении товаров' });
   }
 };
+
 
 /**
  * Получение расширенной информации о товаре
@@ -307,6 +348,15 @@ exports.getProductExtended = async (req, res) => {
 
     const discount = product.discounts[0] ?? undefined
 
+    const pivots = await ProductImage.findAll({
+      where: { product_id: product.id },
+      attributes: { include: ['product_id','image_id','sort_order'], exclude: ['id'] },
+      include: [{ model: Image, as: 'image', attributes: ['id','file_url','file_path'] }],
+      order: [['sort_order','ASC'], ['image_id','ASC']]
+    });
+
+    const images = pivots.filter(p => p.image).map(p => p.image.file_url);
+
 
     product.variations.forEach(variation => {
       variation.attributes.forEach(attrValue => { // Исправлено обращение
@@ -349,7 +399,7 @@ exports.getProductExtended = async (req, res) => {
       title: product.title,
       sku: product.sku,
       slug: product.slug,
-      images: product.main_image ? [product.main_image] : [],
+      images: images,
       price: getPrice(discount, product.price),
       options: [
         {
