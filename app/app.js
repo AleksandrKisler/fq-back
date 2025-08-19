@@ -9,11 +9,21 @@ const bannerRoutes = require('./routes/bannerRoutes');
 const selectionRoutes = require('./routes/selectionRoutes');
 const collectionRoutes = require('./routes/collectionRoutes');
 const homePageRoutes = require('./routes/homePageRoutes');
-
+const uploadsRouter = require('./routes/uploads');
+const cors = require('cors')
+const path = require('path');
 
 
 const app = express();
 app.use(express.json());
+
+app.use('/images', express.static(path.join(process.cwd(), 'public', 'images')));
+app.use('/product', express.static(path.join(process.cwd(), 'public', 'product')));
+
+app.use(cors({
+  origin: 'http://localhost:3000',
+  credentials: true // если нужно разрешить передачу кук
+}));
 
 // Проверка подключения к БД
 app.get('/api/v1/health', (req, res) => {
@@ -36,6 +46,7 @@ app.use('/api/v1/', bannerRoutes);
 app.use('/api/v1/', selectionRoutes);
 app.use('/api/v1/', collectionRoutes);
 app.use('/api/v1/', homePageRoutes);
+app.use('/api/v1/uploads', uploadsRouter);
 
 // Функция запуска миграций
 async function runMigrations() {
@@ -70,7 +81,7 @@ async function startServer() {
         }
 
         // Запуск сервера
-        const PORT = process.env.PORT || 3000;
+        const PORT = process.env.PORT || 3001;
         app.listen(PORT, () => {
             console.log(`🚀 Server running on port ${PORT}`);
             console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);

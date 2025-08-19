@@ -59,6 +59,7 @@ function validate(value, { requireAll = true } = {}) {
 exports.create = async (req, res) => {
   try {
     const data = normalize(req.body);
+    console.log(data);
     const errors = validate(data, { requireAll: true });
     if (errors.length) return res.status(400).json({ code: 'VALIDATION_ERROR', errors });
 
@@ -69,8 +70,10 @@ exports.create = async (req, res) => {
       source_id: data.source_id,
       image_position: data.image_position,
       image_url: data.image_url,
-      is_active: data.is_active ?? false
+      is_active: data.is_active ?? false,
+      deleted_at: null,
     });
+
 
     res.status(201).json({ banner: created });
   } catch (e) {
@@ -131,6 +134,7 @@ exports.list = async (req, res) => {
       order: [['created_at', 'DESC']],
       limit, offset
     });
+    console.log('rows', rows);
 
     res.json({ data: rows, total: count, limit, offset });
   } catch (e) {
