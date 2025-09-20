@@ -181,11 +181,19 @@ exports.updateItem = async (req, res) => {
 
 exports.clearCart = async (req, res) => {
   try {
-    // const userId = req.user.id;
+    const userId = req.user.id;
     const {itemIds} = req.body;
+
+    if (!Array.isArray(itemIds) || itemIds.length === 0) {
+      return res.json({
+        success: true,
+        message: 'Корзина очищена'
+      });
+    }
 
     await Cart.destroy({
       where: {
+        user_id: userId,
         id: {
           [Op.in]: itemIds
         }
