@@ -2,7 +2,9 @@
 
 const router = require('express').Router();
 const { uploadImage } = require('../controllers/uploadController');
+const auth = require('../middleware/authMiddleware');
+const requireAdmin = require('../middleware/adminMiddleware');
 
-router.post('/images', uploadImage);
+router.post('/images', auth, requireAdmin, uploadImage);
 
 module.exports = router;
