@@ -6,22 +6,35 @@ exports.getCart = async (req, res) => {
     const userId = req.user.id; // ID из аутентификации
 
     const cartItems = await Cart.findAll({
-      where: {id: userId},
+      where: {user_id: userId},
       include: [
         {
           model: Product,
           as: 'product',
           attributes: ['id', 'title', 'slug', 'price']
         },
+        {
+          model: ProductVariation,
+          as: 'variation',
+          attributes: ['id', 'sku', 'stock_quantity'],
+          required: false
+        }
       ],
       order: [['added_at', 'DESC']]
     });
 
+    const plainItems = cartItems.map(item =>
+      typeof item.get === 'function' ? item.get({plain: true}) : item
+    );
+
     // Расчет итогов
-    const {total, discount, totalWithDiscount} = cartItems.reduce(
+    const {total, discount, totalWithDiscount} = plainItems.reduce(
       (acc, item) => {
-        const itemTotal = item.price_at_add * item.quantity;
-        const itemDiscount = item.discount_at_add * item.quantity;
+        const quantity = Number(item.quantity) || 0;
+        const price = Number(item.price_at_add) || 0;
+        const discountValue = Number(item.discount_at_add) || 0;
+        const itemTotal = price * quantity;
+        const itemDiscount = discountValue * quantity;
         return {
           total: acc.total + itemTotal,
           discount: acc.discount + itemDiscount,
@@ -31,18 +44,20 @@ exports.getCart = async (req, res) => {
       {total: 0, discount: 0, totalWithDiscount: 0}
     );
 
+    const responseItems = plainItems.map(item => ({
+      id: item.id,
+      quantity: item.quantity,
+      price_at_add: item.price_at_add,
+      discount_at_add: item.discount_at_add,
+      attributes: item.attributes,
+      product: item.product,
+      variation: item.variation
+    }));
+
     return res.json({
       success: true,
       data: {
-        items: cartItems.map(item => ({
-          id: item.id,
-          quantity: item.quantity,
-          price_at_add: item.price_at_add,
-          discount_at_add: item.discount_at_add,
-          attributes: item.attributes,
-          product: item.product,
-          variation: item.variation
-        })),
+        items: responseItems,
         total: parseFloat(total.toFixed(2)),
         discount: parseFloat(discount.toFixed(2)),
         totalWithDiscount: parseFloat(totalWithDiscount.toFixed(2))
