@@ -15,7 +15,7 @@
     "migrate": "sequelize db:migrate",
     "migrate:undo": "sequelize db:migrate:undo",
     "seed": "sequelize db:seed:all",
-    "test": "NODE_ENV=test jest"
+    "test": "NODE_ENV=test node --test"
   },
   "dependencies": {
     "axios": "^1.11.0",
