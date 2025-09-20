@@ -62,7 +62,6 @@ exports.addItem = async (req, res) => {
   try {
     const userId = req.user.id;
     const {productId, variationId, quantity = 1} = req.body;
-    console.log(productId, variationId);
 
     // Проверка существования товара
     const product = await Product.findByPk(productId);
@@ -77,11 +76,25 @@ exports.addItem = async (req, res) => {
     let variationPrice = product.price;
     if (variationId) {
       const variation = await ProductVariation.findByPk(variationId);
-      if (!variation || variation.productId === productId) {
+      const variationProductId = variation
+        ? (typeof variation.getDataValue === 'function'
+            ? variation.getDataValue('product_id')
+            : variation.product_id)
+        : null;
+
+      if (!variation || Number(variationProductId) !== Number(productId)) {
         return res.status(400).json({
           success: false,
           message: 'Неверная вариация товара'
         });
+      }
+
+      const variationOwnPrice = variation && (typeof variation.getDataValue === 'function'
+        ? variation.getDataValue('price')
+        : variation.price);
+
+      if (variationOwnPrice !== undefined && variationOwnPrice !== null) {
+        variationPrice = variationOwnPrice;
       }
     }
 
