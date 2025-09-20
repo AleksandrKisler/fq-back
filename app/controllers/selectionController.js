@@ -56,7 +56,6 @@ exports.list = async (req, res) => {
   }
 };
 
-// GET one
 exports.getOne = async (req, res) => {
   try {
     const idOrSlug = req.params.idOrSlug;
@@ -79,7 +78,6 @@ exports.getOne = async (req, res) => {
   }
 };
 
-// CREATE
 exports.create = async (req, res) => {
   const t = await Selection.sequelize.transaction();
   try {
@@ -172,7 +170,6 @@ exports.remove = async (req, res) => {
   }
 };
 
-// Добавить товары в подборку
 exports.addProducts = async (req, res) => {
   try {
     const id = Number(req.params.id);

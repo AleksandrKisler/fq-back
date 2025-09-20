@@ -5,6 +5,7 @@ module.exports = (sequelize, DataTypes) => {
     title:       { type: DataTypes.STRING(255), allowNull: false },
     description: { type: DataTypes.TEXT, allowNull: false },
     is_active:   { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
+    preview_image: { type: DataTypes.STRING(255), allowNull: true }
   }, {
     tableName: 'collections',
     underscored: true,

@@ -74,7 +74,7 @@ exports.getProducts = async (req, res) => {
       source = null,
       sourceType = PRODUCTS_SOURCE_TYPES.CATEGORY,
       filters = [],
-      sort = 'createdAt',
+      sort = 'created_at',
       direction = SORT_DIRECTIONS.DESC,
       limit = 20,
       offset = 0
@@ -167,7 +167,7 @@ exports.getProducts = async (req, res) => {
 
     // Сортировка
     const order = [];
-    const validSortFields = ['title', 'createdAt', 'updatedAt'];
+    const validSortFields = ['title', 'created_at', 'updatedAt'];
     if (validSortFields.includes(sort)) {
       order.push([sort, direction]);
     } else {
@@ -667,3 +667,131 @@ exports.getCatalog = async (req, res) => {
     });
   }
 }
+
+/**
+ * Получение товаров по списку ID
+ * Поддерживает ids в body (массив) или в query (?ids=1,2,3)
+ * Возвращает тот же формат, что и getProducts
+ */
+exports.getProductsByIds = async (req, res) => {
+  try {
+    // 1) Парсинг входных ids
+    let ids = req.body?.ids ?? req.query?.ids ?? [];
+    if (typeof ids === 'string') {
+      ids = ids.split(',').map(s => s.trim());
+    }
+    ids = (Array.isArray(ids) ? ids : [])
+      .map(v => parseInt(v, 10))
+      .filter(v => Number.isInteger(v) && v > 0);
+
+    if (!ids.length) {
+      return res.status(400).json({ code: 'BAD_REQUEST', message: 'Пустой или некорректный список ids' });
+    }
+
+    // 2) Основные товары + активные скидки
+    const products = await Product.findAll({
+      where: { id: { [Op.in]: ids } },
+      include: [{
+        where: { is_active: true },
+        model: Discount,
+        as: 'discounts',
+        through: { attributes: [] },
+        required: false
+      }],
+      attributes: ['id', 'title', 'sku', 'slug', 'price'],
+    });
+
+    if (!products.length) {
+      return res.json({ data: [], total: 0 });
+    }
+
+    const productIds = products.map(p => p.id);
+
+    // 3) Атрибуты вариаций (цвет/размер) как в getProducts
+    const attributesData = await ProductVariation.findAll({
+      where: { product_id: { [Op.in]: productIds } },
+      include: [{
+        model: AttributeValue,
+        as: 'attributes',
+        include: [{
+          model: Attribute,
+          as: 'attribute',
+          where: { name: { [Op.in]: ['Цвет', 'Размер'] } }
+        }]
+      }],
+      attributes: ['product_id']
+    });
+
+    // 4) Картинки одним запросом
+    const pivots = await ProductImage.findAll({
+      where: { product_id: { [Op.in]: productIds } },
+      attributes: { include: ['product_id', 'image_id', 'sort_order'] },
+      include: [{ model: Image, attributes: ['id','file_url','file_path'], as: 'image' }],
+      order: [['sort_order','ASC'], ['image_id','ASC']],
+    });
+    const imagesMap = buildImagesMap(pivots);
+
+    // 5) Группируем атрибуты в COLOR/SIZE
+    const attributesMap = {};
+    attributesData.forEach(variation => {
+      const pid = variation.product_id;
+      if (!attributesMap[pid]) {
+        attributesMap[pid] = { colors: new Map(), sizes: new Map() };
+      }
+      (variation.attributes || []).forEach(attr => {
+        const name = attr.attribute?.name;
+        if (name === 'Цвет') {
+          if (!attributesMap[pid].colors.has(attr.id)) {
+            attributesMap[pid].colors.set(attr.id, {
+              id: attr.id,
+              value: attr.value,
+              hex_code: attr.hex_code,
+              slug: String(attr.value).toLowerCase().replace(/\s+/g, '-'),
+            });
+          }
+        } else if (name === 'Размер') {
+          if (!attributesMap[pid].sizes.has(attr.id)) {
+            attributesMap[pid].sizes.set(attr.id, {
+              id: attr.id,
+              value: attr.value,
+              slug: String(attr.value).toLowerCase().replace(/\s+/g, '-'),
+            });
+          }
+        }
+      });
+    });
+
+    // 6) Собираем ответ в том же формате, сохраняя порядок ids
+    const idx = new Map(ids.map((id, i) => [id, i]));
+    const result = products.map(p => {
+      const pid = p.id;
+      const discount = p.discounts?.[0];
+      const colors = Array.from(attributesMap[pid]?.colors.values() || []);
+      const sizes  = Array.from(attributesMap[pid]?.sizes.values()  || []);
+
+      const options = [];
+      if (colors.length) options.push({ title: 'Цвет', type: 'COLOR', values: colors });
+      if (sizes.length)  options.push({ title: 'Размер', type: 'SIZE',  values: sizes });
+
+      const images = (imagesMap[pid] || []).map(x => x.url);
+
+      return {
+        id: pid,
+        title: p.title,
+        sku: p.sku,
+        slug: p.slug,
+        images,
+        price: getPrice(discount, p.price),
+        options,
+        _order: idx.get(pid) ?? 999999, // для стабильной сортировки
+      };
+    }).sort((a, b) => a._order - b._order)
+      .map(({ _order, ...rest }) => rest);
+
+    return res.json({ data: result, total: result.length });
+  } catch (error) {
+    console.error('Ошибка при получении товаров по ids:', error);
+    return res.status(500).json({ code: 'SERVER_ERROR', message: 'Ошибка сервера при получении товаров по ids' });
+  }
+};
+

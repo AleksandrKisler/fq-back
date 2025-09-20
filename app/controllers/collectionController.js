@@ -68,14 +68,15 @@ exports.getOne = async (req, res) => {
 exports.create = async (req, res) => {
   const t = await Collection.sequelize.transaction();
   try {
-    const { title, description, is_active = false, productIds = [] } = req.body || {};
+    const { title, description, is_active = false, productIds = [], preview_image } = req.body || {};
     if (!title || !String(title).trim())       return res.status(400).json({ code: 'VALIDATION_ERROR', message: 'Поле "title" обязательно' });
     if (!description || !String(description).trim()) return res.status(400).json({ code: 'VALIDATION_ERROR', message: 'Поле "description" обязательно' });
 
     const collection = await Collection.create({
       title: title.trim(),
       description: description.trim(),
-      is_active: parseBool(is_active)
+      is_active: parseBool(is_active),
+      preview_image,
     }, { transaction: t });
 
     if (Array.isArray(productIds) && productIds.length) {
@@ -95,7 +96,6 @@ exports.create = async (req, res) => {
   }
 };
 
-// UPDATE
 exports.update = async (req, res) => {
   const t = await Collection.sequelize.transaction();
   try {
@@ -103,7 +103,7 @@ exports.update = async (req, res) => {
     const collection = await Collection.findByPk(id);
     if (!collection) return res.status(404).json({ code: 'NOT_FOUND', message: 'Коллекция не найдена' });
 
-    const { title, description, is_active, productIds } = req.body || {};
+    const { title, description, is_active, productIds, preview_image } = req.body || {};
     if (typeof title !== 'undefined') {
       if (!String(title).trim()) return res.status(400).json({ code: 'VALIDATION_ERROR', message: 'Поле "title" не может быть пустым' });
       collection.title = title.trim();
@@ -113,6 +113,8 @@ exports.update = async (req, res) => {
       collection.description = description.trim();
     }
     if (typeof is_active !== 'undefined') collection.is_active = parseBool(is_active);
+
+    if (typeof preview_image === 'string' ) collection.preview_image = preview_image;
 
     await collection.save({ transaction: t });
 
@@ -138,20 +140,20 @@ exports.update = async (req, res) => {
 };
 
 // DELETE
+// DELETE
 exports.remove = async (req, res) => {
   const t = await Collection.sequelize.transaction();
   try {
     const id = Number(req.params.id);
-    const n = await Collection.destroy({ where: { id }, transaction: t });
     await CollectionProduct.destroy({ where: { collection_id: id }, transaction: t });
+    const n = await Collection.destroy({ where: { id }, transaction: t });
     await t.commit();
-
     if (!n) return res.status(404).json({ code: 'NOT_FOUND', message: 'Коллекция не найдена' });
-    res.status(204).send();
+    return res.status(204).send();
   } catch (e) {
     await t.rollback();
     console.error('collections.remove error:', e);
-    res.status(500).json({ code: 'SERVER_ERROR', message: 'Ошибка при удалении коллекции' });
+    return res.status(500).json({ code: 'SERVER_ERROR', message: 'Ошибка при удалении коллекции' });
   }
 };
 

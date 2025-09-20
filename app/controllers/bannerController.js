@@ -1,30 +1,36 @@
-const { Banner } = require('../models');
+const {Banner} = require('../models');
 
 const TYPE_VALUES = ['PRODUCT', 'COLLECTION', 'INFORMATION', 'MAIN'];
 const IMG_POS_VALUES = ['DEFAULT', 'LEFT', 'RIGHT'];
 
 const parseBool = v => v === true || v === 'true' || v === 1 || v === '1';
 
-function isValidUri(s='') {
+function isValidUri(s = '') {
   if (typeof s !== 'string' || !s.trim()) return false;
   if (s.startsWith('/')) return true;
-  try { new URL(s); return true; } catch { return false; }
+  try {
+    new URL(s);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function normalize(body = {}) {
   const c = body.content || {};
   return {
-    type:           body.type,
-    title:          body.title ?? c.title,
-    description:    body.description ?? c.description,
-    source_id:      body.source_id ?? c.sourceId ?? null,
+    type: body.type,
+    title: body.title ?? c.title,
+    description: body.description ?? c.description,
+    source: body.source ?? c.source ?? null,
     image_position: body.image_position ?? c.imagePosition ?? null,
-    image_url:      body.image_url ?? c.image,
-    is_active:      typeof body.is_active !== 'undefined' ? parseBool(body.is_active) : undefined
+    text_color: body.text_color ?? c.text_color ?? c.text_color ?? '#000',
+    image_url: body.image_url ?? c.image,
+    is_active: typeof body.is_active !== 'undefined' ? parseBool(body.is_active) : undefined
   };
 }
 
-function validate(value, { requireAll = true } = {}) {
+function validate(value, {requireAll = true} = {}) {
   const errors = [];
 
   if (!value.type || !TYPE_VALUES.includes(value.type)) {
@@ -60,25 +66,26 @@ exports.create = async (req, res) => {
   try {
     const data = normalize(req.body);
     console.log(data);
-    const errors = validate(data, { requireAll: true });
-    if (errors.length) return res.status(400).json({ code: 'VALIDATION_ERROR', errors });
+    const errors = validate(data, {requireAll: true});
+    if (errors.length) return res.status(400).json({code: 'VALIDATION_ERROR', errors});
 
     const created = await Banner.create({
       type: data.type,
       title: data.title,
       description: data.description,
-      source_id: data.source_id,
+      source: data.source,
       image_position: data.image_position,
       image_url: data.image_url,
       is_active: data.is_active ?? false,
+      text_color: data.text_color,
       deleted_at: null,
     });
 
 
-    res.status(201).json({ banner: created });
+    res.status(201).json({banner: created});
   } catch (e) {
     console.error('banners.create error:', e);
-    res.status(500).json({ code: 'SERVER_ERROR', message: 'Ошибка при создании баннера' });
+    res.status(500).json({code: 'SERVER_ERROR', message: 'Ошибка при создании баннера'});
   }
 }
 
@@ -86,49 +93,50 @@ exports.update = async (req, res) => {
   try {
     const id = Number(req.params.id);
     const item = await Banner.findByPk(id);
-    if (!item) return res.status(404).json({ code: 'NOT_FOUND', message: 'Баннер не найден' });
+    if (!item) return res.status(404).json({code: 'NOT_FOUND', message: 'Баннер не найден'});
 
     const data = normalize(req.body);
-    const errors = validate(data, { requireAll: false });
-    if (errors.length) return res.status(400).json({ code: 'VALIDATION_ERROR', errors });
+    const errors = validate(data, {requireAll: false});
+    if (errors.length) return res.status(400).json({code: 'VALIDATION_ERROR', errors});
 
-    if (data.type !== undefined)           item.type = data.type;
-    if (data.title !== undefined)          item.title = data.title;
-    if (data.description !== undefined)    item.description = data.description;
-    if (data.source_id !== undefined)      item.source_id = data.source_id;
+    if (data.type !== undefined) item.type = data.type;
+    if (data.title !== undefined) item.title = data.title;
+    if (data.description !== undefined) item.description = data.description;
+    if (data.source !== undefined) item.source = data.source;
     if (data.image_position !== undefined) item.image_position = data.image_position;
-    if (data.image_url !== undefined)      item.image_url = data.image_url;
-    if (data.is_active !== undefined)      item.is_active = data.is_active;
+    if (data.text_color !== undefined) item.text_color = data.text_color;
+    if (data.image_url !== undefined) item.image_url = data.image_url;
+    if (data.is_active !== undefined) item.is_active = data.is_active;
 
     await item.save();
-    res.json({ banner: item });
+    res.json({banner: item});
   } catch (e) {
     console.error('banners.update error:', e);
-    res.status(500).json({ code: 'SERVER_ERROR', message: 'Ошибка при обновлении баннера' });
+    res.status(500).json({code: 'SERVER_ERROR', message: 'Ошибка при обновлении баннера'});
   }
 }
 
 exports.list = async (req, res) => {
   try {
-    const q        = (req.query.q || '').trim();
-    const type     = (req.query.type || '').trim();
+    const q = (req.query.q || '').trim();
+    const type = (req.query.type || '').trim();
     const isActive = (typeof req.query.is_active !== 'undefined')
       ? (req.query.is_active === 'true' || req.query.is_active === '1' || req.query.is_active === true)
       : undefined;
     const withDeleted = req.query.withDeleted === 'true' || req.query.withDeleted === '1';
 
-    const limit  = Math.min(parseInt(req.query.limit || 20), 100);
+    const limit = Math.min(parseInt(req.query.limit || 20), 100);
     const offset = parseInt(req.query.offset || 0);
 
     const where = {};
     if (q) where[Op.or] = [
-      { title:       { [Op.iLike]: `%${q}%` } },
-      { description: { [Op.iLike]: `%${q}%` } }
+      {title: {[Op.iLike]: `%${q}%`}},
+      {description: {[Op.iLike]: `%${q}%`}}
     ];
     if (type) where.type = type;
     if (typeof isActive !== 'undefined') where.is_active = isActive;
 
-    const { count, rows } = await Banner.findAndCountAll({
+    const {count, rows} = await Banner.findAndCountAll({
       where,
       paranoid: !withDeleted,              // <-- включаем удалённые при необходимости
       order: [['created_at', 'DESC']],
@@ -136,10 +144,10 @@ exports.list = async (req, res) => {
     });
     console.log('rows', rows);
 
-    res.json({ data: rows, total: count, limit, offset });
+    res.json({data: rows, total: count, limit, offset});
   } catch (e) {
     console.error('banners.list error:', e);
-    res.status(500).json({ code: 'SERVER_ERROR', message: 'Ошибка при получении баннеров' });
+    res.status(500).json({code: 'SERVER_ERROR', message: 'Ошибка при получении баннеров'});
   }
 }
 
@@ -148,13 +156,13 @@ exports.getOne = async (req, res) => {
     const id = Number(req.params.id);
     const withDeleted = req.query.withDeleted === 'true' || req.query.withDeleted === '1';
 
-    const item = await Banner.findByPk(id, { paranoid: !withDeleted });
-    if (!item) return res.status(404).json({ code: 'NOT_FOUND', message: 'Баннер не найден' });
+    const item = await Banner.findByPk(id, {paranoid: !withDeleted});
+    if (!item) return res.status(404).json({code: 'NOT_FOUND', message: 'Баннер не найден'});
 
-    res.json({ banner: item });
+    res.json({banner: item});
   } catch (e) {
     console.error('banners.getOne error:', e);
-    res.status(500).json({ code: 'SERVER_ERROR', message: 'Ошибка при получении баннера' });
+    res.status(500).json({code: 'SERVER_ERROR', message: 'Ошибка при получении баннера'});
   }
 }
 
@@ -173,12 +181,12 @@ exports.remove = async (req, res) => {
 exports.restore = async (req, res) => {
   try {
     const id = Number(req.params.id);
-    const item = await Banner.findByPk(id, { paranoid: false });
-    if (!item) return res.status(404).json({ code: 'NOT_FOUND', message: 'Баннер не найден' });
+    const item = await Banner.findByPk(id, {paranoid: false});
+    if (!item) return res.status(404).json({code: 'NOT_FOUND', message: 'Баннер не найден'});
     await item.restore(); // снимет deleted_at
-    res.json({ banner: item });
+    res.json({banner: item});
   } catch (e) {
     console.error('banners.restore error:', e);
-    res.status(500).json({ code: 'SERVER_ERROR', message: 'Ошибка при восстановлении баннера' });
+    res.status(500).json({code: 'SERVER_ERROR', message: 'Ошибка при восстановлении баннера'});
   }
 };
