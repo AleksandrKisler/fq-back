@@ -7,8 +7,9 @@ module.exports = (sequelize, DataTypes) => {
         email: { type: DataTypes.STRING, unique: true },
         isConfirmed: { type: DataTypes.BOOLEAN, allowNull: true, default: true, defaultValue: false },
         password: { type: DataTypes.STRING, allowNull: false },
-        deviceId: { type: DataTypes.STRING, unique: true, allowNull: true }, // Уникальный идентификатор устройства
-        isAnonymous: { type: DataTypes.BOOLEAN, defaultValue: false }
+        device_id: { type: DataTypes.STRING, unique: true, allowNull: true }, // Уникальный идентификатор устройства
+        is_anonymous: { type: DataTypes.BOOLEAN, defaultValue: false },
+        is_admin: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false }
     }, {
         tableName: 'users',
         timestamps: true,

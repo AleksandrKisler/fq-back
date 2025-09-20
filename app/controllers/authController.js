@@ -1,6 +1,17 @@
 const jwt = require('../config/jwt');
 const {User} = require('../models');
 
+function toPlainUser(user) {
+  if (!user) {
+    return null;
+  }
+  const plain = typeof user.get === 'function' ? user.get({plain: true}) : {...user};
+  if (plain && Object.prototype.hasOwnProperty.call(plain, 'password')) {
+    delete plain.password;
+  }
+  return plain;
+}
+
 module.exports = {
   async register(req, res) {
     try {
@@ -17,11 +28,9 @@ module.exports = {
         password
       });
 
-      const tokens = jwt.generateTokens(user)
+      const tokens = jwt.generateTokens(user);
 
-      user.password = undefined;
-
-      res.status(200).json({user, token: {...tokens}});
+      res.status(200).json({user: toPlainUser(user), token: {...tokens}});
     } catch (error) {
       res.status(401).json({error: 'Ошибка регистрации', statusCode: 401, message: error.message});
     }
@@ -36,11 +45,9 @@ module.exports = {
         return res.status(401).json({error: 'Неправильный email или пароль'});
       }
 
-      const tokens = jwt.generateTokens(user)
+      const tokens = jwt.generateTokens(user);
 
-      user.password = undefined;
-
-      res.json({user, token: {...tokens}});
+      res.json({user: toPlainUser(user), token: {...tokens}});
     } catch (error) {
       res.status(500).json({error: 'Login failed'});
     }
@@ -57,7 +64,7 @@ module.exports = {
       const tokens = jwt.generateTokens(user);
 
       res.json({
-        user,
+        user: toPlainUser(user),
         token: {
           accessToken: tokens.accessToken,
           refreshToken: tokens.refreshToken
@@ -74,28 +81,26 @@ module.exports = {
       if (!device_id) {
         return res.status(422).json({error: 'Device ID обязателен'});
       }
-      console.log(device_id);
       let user = await User.findOne({where: {device_id}});
 
       if (!user) {
         user = await User.create({
-          deviceId: device_id,
+          device_id: device_id,
           name: 'Anonymous User',
           email: `${device_id}-box@anon.com`,
-          isAnonymous: true,
+          is_anonymous: true,
           password: 'device'
         });
       }
 
       const tokens = jwt.generateTokens(user);
 
-      console.log(user, tokens);
-
       res.status(200).json({
         user: {
           id: user.id,
           device_id: user.device_id,
           is_anonymous: user.is_anonymous,
+          is_admin: user.is_admin,
         },
         token: {...tokens}
       });
@@ -129,9 +134,8 @@ module.exports = {
       });
 
       const tokens = jwt.generateTokens(user);
-      user.password = undefined;
 
-      res.status(200).json({user, token: {...tokens}});
+      res.status(200).json({user: toPlainUser(user), token: {...tokens}});
     } catch (error) {
       res.status(500).json({error: 'Ошибка в создании пользователя', message: error.message});
     }

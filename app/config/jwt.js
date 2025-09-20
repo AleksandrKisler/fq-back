@@ -3,9 +3,22 @@ const jwt = require('jsonwebtoken');
 
 module.exports = {
   generateTokens(user) {
-    const payload = user.is_anonymous
-      ? { id: user.id, device_id: user.device_id, is_anonymous: true }
-      : { id: user.id, email: user.email };
+    const getValue = (field) => {
+      if (typeof user.get === 'function') {
+        const value = user.get(field);
+        if (typeof value !== 'undefined') {
+          return value;
+        }
+      }
+      return user[field];
+    };
+
+    const isAnonymous = !!getValue('is_anonymous');
+    const isAdmin = !!getValue('is_admin');
+
+    const payload = isAnonymous
+      ? { id: user.id, device_id: user.device_id, is_anonymous: true, is_admin: isAdmin }
+      : { id: user.id, email: user.email, is_admin: isAdmin };
 
     const accessToken = jwt.sign(
       payload,
