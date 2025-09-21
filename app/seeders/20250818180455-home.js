@@ -101,7 +101,7 @@ module.exports = {
         type: 'INFORMATION',
         title: 'Главный баннер: Осень/Зима',
         description: 'Новая коллекция AW·25 — тепло и стиль.',
-        source_id: null,
+        source: null,
         image_position: 'RIGHT',
         image_url: '/banners/aw25-hero.jpg',
         is_active: true, created_at: now, updated_at: now
@@ -110,7 +110,7 @@ module.exports = {
         type: 'COLLECTION',
         title: 'Подборка: Топ кроссовки',
         description: 'Выбор редакции: лучшие пары недели.',
-        source_id: 'selection:top-sneakers',
+        source: 'selection:top-sneakers',
         image_position: 'LEFT',
         image_url: '/banners/sneakers-pick.jpg',
         is_active: true, created_at: now, updated_at: now
@@ -119,7 +119,7 @@ module.exports = {
         type: 'COLLECTION',
         title: 'Подборка: Хиты продаж',
         description: 'Проверенные временем модели.',
-        source_id: 'selection:best-sellers',
+        source: 'selection:best-sellers',
         image_position: 'DEFAULT',
         image_url: '/banners/best-sellers.jpg',
         is_active: true, created_at: now, updated_at: now
@@ -128,7 +128,7 @@ module.exports = {
         type: 'COLLECTION',
         title: 'Подборка: На каждый день',
         description: 'Комфортная классика.',
-        source_id: 'selection:daily-heels',
+        source: 'selection:daily-heels',
         image_position: 'LEFT',
         image_url: '/banners/daily-heels.jpg',
         is_active: true, created_at: now, updated_at: now

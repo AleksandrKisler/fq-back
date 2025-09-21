@@ -72,7 +72,6 @@ const normalizeRange = ({startDate, endDate} = {}) => {
   if (start > end) {
     throw new DashboardRangeError('Дата начала периода должна быть раньше даты окончания');
   }
-
   return {start, end};
 };
 
@@ -218,7 +217,7 @@ const fetchTopProducts = async (baseWhere, {paidStatusIds}) => {
       LEFT JOIN products p ON p.id = oi.product_id
       WHERE o.created_at BETWEEN :start AND :end
         AND o.status_id IN (:paidStatusIds)
-      GROUP BY oi.product_id, title
+      GROUP BY oi.product_id, oi.product_title, p.title
       ORDER BY revenue DESC, units_sold DESC
       LIMIT 5
     `,
