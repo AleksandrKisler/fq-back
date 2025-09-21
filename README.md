@@ -8,6 +8,24 @@
 
 local .env api_url = http://localhost:80
 
+## Настройки YooKassa
+
+Для работы онлайн-оплаты требуется добавить в `.env`:
+
+```
+YOOKASSA_SHOP_ID=<идентификатор магазина>
+YOOKASSA_SECRET_KEY=<секретный ключ>
+YOOKASSA_RETURN_URL=https://example.com/payment/success
+```
+
+Эти параметры используются для инициализации платежей и проверки webhook-уведомлений.
+
+## Заказы и корзина
+
+- `POST /api/v1/orders/checkout` — оформление заказа по текущей корзине пользователя и создание платежа YooKassa (требуется авторизация).
+- `GET /api/v1/orders/:slug` — просмотр подробностей заказа (требуется авторизация).
+- `POST /api/v1/payments/yookassa/webhook` — обработчик уведомлений YooKassa (используется сервисом).
+
 ## Рассылка новостей
 
 ### POST `/api/v1/newsletter/send`
