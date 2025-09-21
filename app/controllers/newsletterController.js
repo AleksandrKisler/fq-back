@@ -39,14 +39,104 @@ function toPlainText(htmlOrText) {
     .trim();
 }
 
+function renderTemplate(template, recipient) {
+  if (typeof template !== 'string' || !template) {
+    return '';
+  }
+
+  const values = new Proxy(
+    {},
+    {
+      get: (_, prop) => extractValue(recipient, prop)
+    }
+  );
+
+  return template.replace(/{{\s*([\w.]+)\s*}}/g, (_, key) => {
+    const value = values[key];
+    if (value === undefined || value === null) {
+      return '';
+    }
+    return String(value);
+  });
+}
+
+function escapeHtml(text) {
+  if (typeof text !== 'string') {
+    return '';
+  }
+
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function buildPreheaderHtml(preheader) {
+  if (typeof preheader !== 'string') {
+    return '';
+  }
+
+  const trimmed = preheader.trim();
+  if (!trimmed) {
+    return '';
+  }
+
+  return `\n<span style="display:none;font-size:1px;color:#ffffff;line-height:1px;max-height:0;max-width:0;opacity:0;overflow:hidden">${escapeHtml(trimmed)}</span>`;
+}
+
+function buildPlainTextContent(htmlContent, preheader) {
+  const parts = [];
+
+  if (typeof preheader === 'string' && preheader.trim()) {
+    parts.push(preheader.trim());
+  }
+
+  const textFromHtml = toPlainText(htmlContent);
+  if (textFromHtml) {
+    parts.push(textFromHtml);
+  }
+
+  return parts.join('\n\n').trim();
+}
+
+function formatFromField(name, email) {
+  const trimmedEmail = typeof email === 'string' ? email.trim() : '';
+  const trimmedName = typeof name === 'string' ? name.trim() : '';
+
+  if (trimmedEmail && trimmedName) {
+    return `${trimmedName} <${trimmedEmail}>`;
+  }
+
+  if (trimmedEmail) {
+    return trimmedEmail;
+  }
+
+  if (trimmedName) {
+    return trimmedName;
+  }
+
+  return undefined;
+}
+
 async function sendNewsletter(req, res) {
-  const {subject, template, criteria} = req.body || {};
+  const {
+    subject,
+    html,
+    template,
+    criteria,
+    preheader,
+    from_name: fromName,
+    from_email: fromEmail
+  } = req.body || {};
 
   if (!subject || typeof subject !== 'string' || !subject.trim()) {
     return res.status(400).json({error: 'Тема письма обязательна'});
   }
 
-  if (!template || typeof template !== 'string' || !template.trim()) {
+  const baseTemplate = typeof html === 'string' && html.trim() ? html : template;
+  if (!baseTemplate || typeof baseTemplate !== 'string' || !baseTemplate.trim()) {
     return res.status(400).json({error: 'Шаблон письма обязателен'});
   }
 
@@ -67,8 +157,8 @@ async function sendNewsletter(req, res) {
     });
   }
 
-  const htmlBody = template;
-  const textBody = toPlainText(template);
+  const preheaderHtml = buildPreheaderHtml(preheader);
+  const fromField = formatFromField(fromName, fromEmail);
 
   let sentCount = 0;
   const failures = [];
@@ -82,11 +172,16 @@ async function sendNewsletter(req, res) {
     }
 
     try {
+      const renderedHtml = renderTemplate(baseTemplate, recipient);
+      const htmlBody = `${preheaderHtml}${renderedHtml}`;
+      const textBody = buildPlainTextContent(renderedHtml, preheader);
+
       await emailService.sendEmail({
         to: email,
         subject: subject.trim(),
         html: htmlBody,
-        text: textBody
+        text: textBody,
+        from: fromField
       });
       sentCount += 1;
     } catch (error) {
