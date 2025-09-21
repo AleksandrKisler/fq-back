@@ -1,0 +1,69 @@
+const orderService = require('../services/orderService');
+const yookassaService = require('../services/payments/yookassa');
+
+exports.checkout = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const {delivery, customer, comment, returnUrl} = req.body;
+
+    const result = await orderService.createOrderFromCart({
+      userId,
+      delivery,
+      customer,
+      comment,
+      returnUrl
+    });
+
+    return res.status(201).json({
+      success: true,
+      data: result
+    });
+  } catch (error) {
+    console.error('Checkout error:', error);
+    const status = error.statusCode || 500;
+    return res.status(status).json({
+      success: false,
+      message: error.message || 'Не удалось создать заказ'
+    });
+  }
+};
+
+exports.getOrder = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const {slug} = req.params;
+
+    const order = await orderService.getOrderBySlug({slug, userId});
+
+    return res.json({
+      success: true,
+      data: order
+    });
+  } catch (error) {
+    console.error('Get order error:', error);
+    const status = error.statusCode || 500;
+    return res.status(status).json({
+      success: false,
+      message: error.message || 'Не удалось получить заказ'
+    });
+  }
+};
+
+exports.handleWebhook = async (req, res) => {
+  try {
+    if (!yookassaService.isValidWebhookAuth(req.headers.authorization)) {
+      return res.status(401).json({success: false, message: 'Unauthorized'});
+    }
+
+    await orderService.updateOrderFromPaymentEvent(req.body);
+
+    return res.json({success: true});
+  } catch (error) {
+    console.error('Webhook error:', error);
+    const status = error.statusCode || 500;
+    return res.status(status).json({
+      success: false,
+      message: error.message || 'Не удалось обработать уведомление'
+    });
+  }
+};
