@@ -70,6 +70,131 @@ const prepareReceiptItems = cartItems => {
   }));
 };
 
+const sanitizeObject = obj => Object.fromEntries(
+  Object.entries(obj)
+    .filter(([, value]) => value !== undefined && value !== null && value !== '')
+);
+
+const getDefaultFulfillmentType = method => {
+  if (!method) {
+    return null;
+  }
+
+  const normalized = String(method).toLowerCase();
+
+  if (normalized === 'store_pickup' || normalized === 'store') {
+    return 'store_pickup';
+  }
+
+  if (normalized === 'cdek_pvz' || normalized === 'cdek') {
+    return 'cdek_pvz';
+  }
+
+  return null;
+};
+
+const extractDeliveryMetadata = (delivery, method) => {
+  if (!delivery || typeof delivery !== 'object') {
+    return null;
+  }
+
+  let metadata;
+
+  if (delivery.metadata && typeof delivery.metadata === 'object') {
+    metadata = sanitizeObject(delivery.metadata);
+  } else {
+    const {method: _method, address: _address, cost: _cost, metadata: _metadata, ...rest} = delivery;
+    metadata = sanitizeObject(rest);
+  }
+
+  if (metadata.variant && !metadata.fulfillment_type) {
+    metadata.fulfillment_type = metadata.variant;
+  }
+
+  const defaultType = getDefaultFulfillmentType(method);
+
+  if (defaultType && !metadata.fulfillment_type) {
+    metadata.fulfillment_type = defaultType;
+  }
+
+  if (Object.keys(metadata).length === 0) {
+    return defaultType ? {fulfillment_type: defaultType} : null;
+  }
+
+  return metadata;
+};
+
+const resolveDeliveryAddress = (delivery, metadata, method) => {
+  const directAddress = typeof delivery.address === 'string' ? delivery.address.trim() : '';
+  if (directAddress) {
+    return directAddress;
+  }
+
+  const meta = metadata || {};
+  const addressCandidates = [
+    meta.address_full,
+    meta.full_address,
+    meta.address,
+    meta.pickup_address,
+    meta.store_address
+  ];
+
+  for (const candidate of addressCandidates) {
+    if (typeof candidate === 'string' && candidate.trim()) {
+      return candidate.trim();
+    }
+  }
+
+  if (method === 'store_pickup' && typeof meta.store_name === 'string' && meta.store_name.trim()) {
+    return `Самовывоз: ${meta.store_name.trim()}`;
+  }
+
+  if (method === 'cdek_pvz') {
+    const pointName = typeof meta.name === 'string' ? meta.name.trim() : '';
+    const city = typeof meta.city === 'string' ? meta.city.trim() : '';
+
+    if (pointName && city) {
+      return `${city}, ${pointName}`;
+    }
+
+    if (pointName) {
+      return pointName;
+    }
+  }
+
+  return '';
+};
+
+const normalizeDeliveryPayload = rawDelivery => {
+  if (!rawDelivery || typeof rawDelivery !== 'object') {
+    throw new OrderError('Не указаны параметры доставки', 400);
+  }
+
+  const method = typeof rawDelivery.method === 'string' ? rawDelivery.method.trim() : '';
+  if (!method) {
+    throw new OrderError('Не указан способ доставки', 400);
+  }
+
+  const cost = Number(rawDelivery.cost ?? 0);
+  if (!Number.isFinite(cost) || cost < 0) {
+    throw new OrderError('Некорректная стоимость доставки', 400);
+  }
+
+  const metadata = extractDeliveryMetadata(rawDelivery, method);
+  const address = resolveDeliveryAddress(rawDelivery, metadata, method);
+
+  if (!address) {
+    throw new OrderError('Не указан адрес доставки', 400);
+  }
+
+  return {
+    method,
+    cost,
+    address,
+    metadata
+  };
+};
+
 const createOrderFromCart = async ({
   userId,
   delivery,
@@ -83,11 +208,14 @@ const createOrderFromCart = async ({
     throw new OrderError('Корзина пуста', 400);
   }
 
-  if (!delivery || !delivery.method || !delivery.address) {
-    throw new OrderError('Не указаны параметры доставки', 400);
-  }
+  const normalizedDelivery = normalizeDeliveryPayload(delivery);
+  const {
+    method: deliveryMethod,
+    address: deliveryAddress,
+    cost: deliveryCost,
+    metadata: deliveryMetadata
+  } = normalizedDelivery;
 
-  const deliveryCost = Number(delivery.cost ?? 0);
   const subtotal = totals.total;
   const discountTotal = totals.discount;
   const totalAmount = subtotal + deliveryCost;
@@ -100,6 +228,14 @@ const createOrderFromCart = async ({
   const transaction = await sequelize.transaction();
 
   try {
+    const orderMetadata = {
+      cart_item_ids: items.map(item => item.id)
+    };
+
+    if (deliveryMetadata) {
+      orderMetadata.delivery = deliveryMetadata;
+    }
+
     const order = await Order.create({
       slug: generateOrderSlug(),
       user_id: userId,
@@ -107,8 +243,8 @@ const createOrderFromCart = async ({
       order_date: new Date(),
       subtotal_amount: subtotal,
       total_discount: discountTotal,
-      delivery_method: delivery.method,
-      delivery_address: delivery.address,
+      delivery_method: deliveryMethod,
+      delivery_address: deliveryAddress,
       delivery_cost: deliveryCost,
       total_amount: totalAmount,
       currency: 'RUB',
@@ -117,9 +253,7 @@ const createOrderFromCart = async ({
       customer_email: customer?.email || null,
       customer_phone: customer?.phone || null,
       customer_name: customer?.name || null,
-      metadata: {
-        cart_item_ids: items.map(item => item.id)
-      }
+      metadata: orderMetadata
     }, {transaction});
 
     const orderItemsPayload = items.map(item => ({
