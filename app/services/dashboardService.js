@@ -80,7 +80,7 @@ const buildStatusMap = async () => {
   const titles = Array.from(new Set([...PAID_STATUS_TITLES, ...CANCELLED_STATUS_TITLES]));
 
   if (titles.length === 0) {
-    return {paid: [], cancelled: []};
+    return {paidStatusIds: [], cancelledStatusIds: []};
   }
 
   const statuses = await Status.findAll({
@@ -97,7 +97,10 @@ const buildStatusMap = async () => {
     .filter((status) => CANCELLED_STATUS_TITLES.includes(status.title))
     .map((status) => status.id);
 
-  return {paid, cancelled};
+  return {
+    paidStatusIds: paid,
+    cancelledStatusIds: cancelled
+  };
 };
 
 const fetchSummary = async (baseWhere, {paidStatusIds, cancelledStatusIds}) => {
