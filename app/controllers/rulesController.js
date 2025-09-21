@@ -15,6 +15,8 @@ const SANITIZE_OPTS = {
   allowedSchemesByTag: { img: ['http','https','data'] },
 };
 
+exports.SANITIZE_OPTS = SANITIZE_OPTS;
+
 const cleanStr = (v) => typeof v === 'string' ? v.trim() : v;
 
 exports.list = async (req, res) => {
