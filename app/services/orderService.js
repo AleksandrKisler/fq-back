@@ -70,6 +70,26 @@ const prepareReceiptItems = cartItems => {
   }));
 };
 
+const sanitizeObject = obj => Object.fromEntries(
+  Object.entries(obj)
+    .filter(([, value]) => value !== undefined && value !== null && value !== '')
+);
+
+const buildDeliveryMetadata = delivery => {
+  if (!delivery || typeof delivery !== 'object') {
+    return null;
+  }
+
+  if (delivery.metadata && typeof delivery.metadata === 'object') {
+    return delivery.metadata;
+  }
+
+  const {method, address, cost, ...rest} = delivery;
+  const sanitized = sanitizeObject(rest);
+
+  return Object.keys(sanitized).length ? sanitized : null;
+};
+
 const createOrderFromCart = async ({
   userId,
   delivery,
@@ -100,6 +120,15 @@ const createOrderFromCart = async ({
   const transaction = await sequelize.transaction();
 
   try {
+    const orderMetadata = {
+      cart_item_ids: items.map(item => item.id)
+    };
+
+    const deliveryMetadata = buildDeliveryMetadata(delivery);
+    if (deliveryMetadata) {
+      orderMetadata.delivery = deliveryMetadata;
+    }
+
     const order = await Order.create({
       slug: generateOrderSlug(),
       user_id: userId,
@@ -117,9 +146,7 @@ const createOrderFromCart = async ({
       customer_email: customer?.email || null,
       customer_phone: customer?.phone || null,
       customer_name: customer?.name || null,
-      metadata: {
-        cart_item_ids: items.map(item => item.id)
-      }
+      metadata: orderMetadata
     }, {transaction});
 
     const orderItemsPayload = items.map(item => ({
