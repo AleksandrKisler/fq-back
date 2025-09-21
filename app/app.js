@@ -15,6 +15,7 @@ const deliveryRoutes = require('./routes/deliveryRoutes');
 const uploadsRouter = require('./routes/uploads');
 const rulesRouter = require('./routes/rulesRoutes');
 const newsletterRoutes = require('./routes/newsletterRoutes');
+const dashboardRoutes = require('./routes/dashboardRoutes');
 const authMiddleware = require('./middleware/authMiddleware');
 const adminMiddleware = require('./middleware/adminMiddleware');
 const cors = require('cors')
@@ -59,6 +60,7 @@ app.use('/api/v1/', deliveryRoutes);
 app.use('/api/v1/uploads', uploadsRouter);
 app.use('/api/v1/rules', rulesRouter);
 app.use('/api/v1/newsletter', authMiddleware, adminMiddleware, newsletterRoutes);
+app.use('/api/v1/', dashboardRoutes);
 
 // Функция запуска миграций
 async function runMigrations() {
