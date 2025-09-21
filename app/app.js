@@ -11,6 +11,9 @@ const collectionRoutes = require('./routes/collectionRoutes');
 const homePageRoutes = require('./routes/homePageRoutes');
 const uploadsRouter = require('./routes/uploads');
 const rulesRouter = require('./routes/rulesRoutes');
+const newsletterRoutes = require('./routes/newsletterRoutes');
+const authMiddleware = require('./middleware/authMiddleware');
+const adminMiddleware = require('./middleware/adminMiddleware');
 const cors = require('cors')
 const path = require('path');
 
@@ -49,6 +52,7 @@ app.use('/api/v1/', collectionRoutes);
 app.use('/api/v1/', homePageRoutes);
 app.use('/api/v1/uploads', uploadsRouter);
 app.use('/api/v1/rules', rulesRouter);
+app.use('/api/v1/newsletter', authMiddleware, adminMiddleware, newsletterRoutes);
 
 // Функция запуска миграций
 async function runMigrations() {
