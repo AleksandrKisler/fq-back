@@ -4,6 +4,7 @@ const authController = require('../controllers/authController');
 
 router.post('/register', authController.register);
 router.post('/auth', authController.login);
+router.get('/verify-email', authController.verifyEmail);
 router.post('/refresh', authController.refresh);
 router.post('/register-auth', authController.createAnonymousUser);
 router.post('/anonymous-regular', authController.convertToRegularUser);
