@@ -5,7 +5,9 @@ module.exports = (sequelize, DataTypes) => {
         name: DataTypes.STRING,
         birthday: DataTypes.DATEONLY,
         email: { type: DataTypes.STRING, unique: true },
-        isConfirmed: { type: DataTypes.BOOLEAN, allowNull: true, default: true, defaultValue: false },
+        emailVerificationToken: { type: DataTypes.STRING, allowNull: true, field: 'email_verification_token' },
+        emailVerificationTokenExpires: { type: DataTypes.DATE, allowNull: true, field: 'email_verification_token_expires' },
+        isConfirmed: { type: DataTypes.BOOLEAN, allowNull: true, defaultValue: false },
         password: { type: DataTypes.STRING, allowNull: false },
         device_id: { type: DataTypes.STRING, unique: true, allowNull: true }, // Уникальный идентификатор устройства
         is_anonymous: { type: DataTypes.BOOLEAN, defaultValue: false },
