@@ -34,16 +34,17 @@ function getTransporter() {
   return transporter;
 }
 
-async function sendEmail({to, subject, text, html}) {
+async function sendEmail({to, subject, text, html, from, headers}) {
   const mailTransporter = getTransporter();
-  const from = process.env.SMTP_FROM || process.env.SMTP_USER;
+  const defaultFrom = process.env.SMTP_FROM || process.env.SMTP_USER;
 
   const mailOptions = {
-    from,
+    from: from || defaultFrom,
     to,
     subject,
     text,
-    html
+    html,
+    headers
   };
 
   return mailTransporter.sendMail(mailOptions);

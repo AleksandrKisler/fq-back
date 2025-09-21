@@ -36,6 +36,7 @@ test('sendNewsletter sends messages to confirmed users', async () => {
     receivedQuery = query;
     return [
       {
+        name: 'Анна',
         get(field) {
           if (field === 'email') {
             return 'user1@example.com';
@@ -43,7 +44,7 @@ test('sendNewsletter sends messages to confirmed users', async () => {
           return undefined;
         }
       },
-      {email: 'user2@example.com'}
+      {email: 'user2@example.com', name: 'Борис'}
     ];
   };
 
@@ -55,7 +56,10 @@ test('sendNewsletter sends messages to confirmed users', async () => {
   const req = {
     body: {
       subject: 'Promo',
-      template: '<p>Special offer</p>',
+      html: '<h1>Здравствуйте, {{name}}!</h1><p>Special offer</p>',
+      preheader: 'Just today',
+      from_name: 'Forever Queen',
+      from_email: 'hello@foreverqueen.ru',
       criteria: {where: {is_admin: false}, limit: 50}
     }
   };
@@ -71,6 +75,10 @@ test('sendNewsletter sends messages to confirmed users', async () => {
     });
     assert.strictEqual(sentPayloads.length, 2);
     assert.ok(sentPayloads.every((payload) => payload.subject === 'Promo'));
+    assert.ok(sentPayloads.every((payload) => payload.from === 'Forever Queen <hello@foreverqueen.ru>'));
+    assert.match(sentPayloads[0].html, />Здравствуйте, Анна!</);
+    assert.match(sentPayloads[1].html, />Здравствуйте, Борис!</);
+    assert.ok(sentPayloads.every((payload) => payload.text.startsWith('Just today')));
     assert.strictEqual(res.jsonPayload.summary.total, 2);
     assert.strictEqual(res.jsonPayload.summary.sent, 2);
     assert.strictEqual(res.jsonPayload.summary.failed, 0);
@@ -101,7 +109,7 @@ test('sendNewsletter reports individual delivery failures', async () => {
   const req = {
     body: {
       subject: 'Promo',
-      template: '<p>Special offer</p>'
+      html: '<p>Special offer</p>'
     }
   };
   const res = createMockRes();
