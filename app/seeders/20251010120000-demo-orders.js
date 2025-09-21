@@ -218,6 +218,18 @@ const ORDERS = [
 
 const CUSTOMER_EMAILS = Array.from(new Set(ORDERS.map((order) => order.customer?.email).filter(Boolean)));
 
+const serializeStructuredData = (value) => {
+  if (value === null || value === undefined) {
+    return null;
+  }
+
+  if (typeof value === 'string') {
+    return value;
+  }
+
+  return JSON.stringify(value);
+};
+
 const ORDER_ITEMS_BY_SLUG = {
   'demo-order-001': [
     {
@@ -511,9 +523,9 @@ module.exports = {
           payment_status: payment.status || null,
           payment_method: payment.method || null,
           payment_confirmation_url: payment.confirmationUrl || null,
-          payment_data: payment.data || null,
+          payment_data: serializeStructuredData(payment.data),
           currency: 'RUB',
-          metadata: order.metadata || null,
+          metadata: serializeStructuredData(order.metadata),
           paid_at: payment.paidAt ? new Date(payment.paidAt) : null,
           cancellation_reason: order.cancellationReason || null,
           created_at: createdAt,
@@ -560,7 +572,7 @@ module.exports = {
             unit_price: item.unit_price,
             discount: item.discount,
             total_price: item.total_price,
-            attributes: item.attributes || {},
+            attributes: serializeStructuredData(item.attributes || {}),
             created_at: createdAt,
             updated_at: updatedAt
           });
