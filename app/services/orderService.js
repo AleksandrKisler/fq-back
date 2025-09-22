@@ -2,6 +2,7 @@ const {v4: uuidv4} = require('uuid');
 const {sequelize, Order, OrderItem, Status} = require('../models');
 const cartService = require('./cartService');
 const yookassaService = require('./payments/yookassa');
+const dolyamiService = require('./payments/dolyami');
 
 class OrderError extends Error {
   constructor(message, statusCode = 400) {
@@ -68,6 +69,19 @@ const prepareReceiptItems = cartItems => {
     },
     vat_code: 1
   }));
+};
+
+const prepareDolyamiItems = cartItems => {
+  const draftItems = cartItems.map((item, index) => ({
+    id: item.id || item.product_id || index + 1,
+    name: item.product?.title?.substring(0, 255) || 'Товар',
+    quantity: Number(item.quantity) || 1,
+    price: Number((item.price_at_add - item.discount_at_add).toFixed(2)),
+    total: Number(item.totals?.total ?? ((item.price_at_add - item.discount_at_add) * item.quantity)),
+    sku: item.variation?.sku || null
+  }));
+
+  return dolyamiService.normalizeItems(draftItems);
 };
 
 const sanitizeObject = obj => Object.fromEntries(
@@ -200,7 +214,8 @@ const createOrderFromCart = async ({
   delivery,
   customer,
   comment,
-  returnUrl
+  returnUrl,
+  payment
 }) => {
   const {items, totals} = await cartService.getCartItems(userId);
 
@@ -224,12 +239,51 @@ const createOrderFromCart = async ({
     throw new OrderError('Сумма заказа должна быть больше 0', 400);
   }
 
+  const requestedPaymentMethod = typeof payment?.method === 'string'
+    ? payment.method.trim().toLowerCase()
+    : null;
+  const allowedPaymentMethods = ['yookassa', 'dolyami', 'none'];
+
+  if (requestedPaymentMethod && !allowedPaymentMethods.includes(requestedPaymentMethod)) {
+    throw new OrderError('Некорректный способ оплаты', 400);
+  }
+
+  let paymentMethod = requestedPaymentMethod;
+  if (!paymentMethod) {
+    if (yookassaService.isConfigured()) {
+      paymentMethod = 'yookassa';
+    } else if (dolyamiService.isConfigured()) {
+      paymentMethod = 'dolyami';
+    } else {
+      paymentMethod = 'none';
+    }
+  }
+
+  if (paymentMethod === 'yookassa' && !yookassaService.isConfigured()) {
+    if (requestedPaymentMethod) {
+      throw new OrderError('Оплата через YooKassa недоступна', 503);
+    }
+
+    paymentMethod = dolyamiService.isConfigured() ? 'dolyami' : 'none';
+  }
+
+  if (paymentMethod === 'dolyami' && !dolyamiService.isConfigured()) {
+    if (requestedPaymentMethod) {
+      throw new OrderError('Оплата через Долями недоступна', 503);
+    }
+
+    paymentMethod = 'none';
+  }
+
+  const isPaymentPlanned = paymentMethod !== 'none';
+
   const status = await ensureStatus('Создан');
   const transaction = await sequelize.transaction();
 
   try {
     const orderMetadata = {
-      cart_item_ids: items.map(item => item.id)
+      cart_item_ids: items.map(item => item.id),
+      payment: {method: paymentMethod}
     };
 
     if (deliveryMetadata) {
@@ -248,7 +302,8 @@ const createOrderFromCart = async ({
       delivery_cost: deliveryCost,
       total_amount: totalAmount,
       currency: 'RUB',
-      payment_status: yookassaService.isConfigured() ? 'pending' : 'not_configured',
+      payment_status: isPaymentPlanned ? 'pending' : 'not_configured',
+      payment_method: paymentMethod === 'none' ? null : paymentMethod,
       comment: comment || null,
       customer_email: customer?.email || null,
       customer_phone: customer?.phone || null,
@@ -273,10 +328,10 @@ const createOrderFromCart = async ({
 
     const orderPlain = toPlainOrder(order);
 
-    let payment = null;
-    if (yookassaService.isConfigured()) {
+    let paymentSummary = null;
+    if (paymentMethod === 'yookassa') {
       const receiptItems = prepareReceiptItems(items);
-      payment = await yookassaService.createPayment({
+      const paymentResponse = await yookassaService.createPayment({
         amount: totalAmount,
         returnUrl,
         description: `Заказ ${orderPlain.slug}`,
@@ -285,18 +340,88 @@ const createOrderFromCart = async ({
         metadata: {
           orderId: orderPlain.id,
           orderSlug: orderPlain.slug,
-          userId
+          userId,
+          ...(payment?.metadata && typeof payment.metadata === 'object' ? payment.metadata : {})
         }
       });
 
       await order.update({
-        payment_id: payment.id,
-        payment_status: payment.status,
-        payment_method: payment.payment_method?.type || null,
-        payment_confirmation_url: payment.confirmation?.confirmation_url || null,
-        payment_data: payment,
-        currency: payment.amount?.currency || 'RUB'
+        payment_id: paymentResponse.id,
+        payment_status: paymentResponse.status,
+        payment_method: paymentResponse.payment_method?.type || paymentMethod,
+        payment_confirmation_url: paymentResponse.confirmation?.confirmation_url || null,
+        payment_data: paymentResponse,
+        currency: paymentResponse.amount?.currency || 'RUB'
       }, {transaction});
+
+      paymentSummary = {
+        id: paymentResponse.id,
+        status: paymentResponse.status,
+        confirmation_url: paymentResponse.confirmation?.confirmation_url || null,
+        provider: 'yookassa'
+      };
+    }
+
+    if (paymentMethod === 'dolyami') {
+      const dolyamiItems = prepareDolyamiItems(items);
+      const deliveryPayload = {
+        method: deliveryMethod,
+        address: deliveryAddress,
+        cost: Number(deliveryCost.toFixed(2))
+      };
+
+      const dolyamiMetadata = {
+        orderId: orderPlain.id,
+        orderSlug: orderPlain.slug,
+        userId,
+        ...(payment?.metadata && typeof payment.metadata === 'object' ? payment.metadata : {})
+      };
+
+      const dolyamiOrder = await dolyamiService.createOrder({
+        amount: totalAmount,
+        orderId: orderPlain.id,
+        orderSlug: orderPlain.slug,
+        description: `Заказ ${orderPlain.slug}`,
+        customer,
+        items: dolyamiItems,
+        metadata: dolyamiMetadata,
+        successUrl: payment?.successUrl || returnUrl,
+        failUrl: payment?.failUrl,
+        cancelUrl: payment?.cancelUrl,
+        delivery: deliveryPayload
+      });
+
+      const paymentId = dolyamiOrder?.order?.uuid
+        || dolyamiOrder?.order?.id
+        || dolyamiOrder?.uuid
+        || dolyamiOrder?.id
+        || null;
+      const paymentStatus = dolyamiOrder?.order?.status
+        || dolyamiOrder?.status
+        || 'pending';
+      const confirmationUrl = dolyamiOrder?.order?.checkout_url
+        || dolyamiOrder?.checkout_url
+        || dolyamiOrder?.confirmation_url
+        || null;
+      const currency = dolyamiOrder?.order?.amount?.currency
+        || dolyamiOrder?.amount?.currency
+        || 'RUB';
+
+      await order.update({
+        payment_id: paymentId,
+        payment_status: paymentStatus,
+        payment_method: 'dolyami',
+        payment_confirmation_url: confirmationUrl,
+        payment_data: dolyamiOrder,
+        currency
+      }, {transaction});
+
+      paymentSummary = {
+        id: paymentId,
+        status: paymentStatus,
+        confirmation_url: confirmationUrl,
+        provider: 'dolyami'
+      };
     }
 
     await transaction.commit();
@@ -306,11 +431,7 @@ const createOrderFromCart = async ({
 
     return {
       order: toPlainOrder(order),
-      payment: payment ? {
-        id: payment.id,
-        status: payment.status,
-        confirmation_url: payment.confirmation?.confirmation_url || null
-      } : null,
+      payment: paymentSummary,
       totals: {
         subtotal,
         discount: discountTotal,
@@ -407,10 +528,192 @@ const updateOrderFromPaymentEvent = async ({event, object}) => {
   return order;
 };
 
+const tryFindOrderById = async idCandidate => {
+  if (idCandidate === undefined || idCandidate === null || idCandidate === '') {
+    return null;
+  }
+
+  const direct = await Order.findByPk(idCandidate);
+  if (direct) {
+    return direct;
+  }
+
+  const numeric = Number(idCandidate);
+  if (!Number.isNaN(numeric) && String(numeric) !== '0') {
+    const numericMatch = await Order.findByPk(numeric);
+    if (numericMatch) {
+      return numericMatch;
+    }
+  }
+
+  return null;
+};
+
+const resolveOrderFromMetadata = async metadata => {
+  if (!metadata || typeof metadata !== 'object') {
+    throw new OrderError('Не удалось определить заказ для платежа', 400);
+  }
+
+  const idCandidates = [
+    metadata.orderId,
+    metadata.order_id,
+    metadata.orderID,
+    metadata.id,
+    metadata.internal_id
+  ];
+
+  for (const candidate of idCandidates) {
+    const order = await tryFindOrderById(candidate);
+    if (order) {
+      return order;
+    }
+  }
+
+  const slugCandidates = [
+    metadata.orderSlug,
+    metadata.order_slug,
+    metadata.slug
+  ].filter(value => typeof value === 'string' && value.trim());
+
+  for (const slug of slugCandidates) {
+    const order = await Order.findOne({where: {slug}});
+    if (order) {
+      return order;
+    }
+  }
+
+  throw new OrderError('Не удалось определить заказ для платежа', 400);
+};
+
+const extractDolyamiOrderPayload = payload => {
+  if (payload && typeof payload === 'object') {
+    if (payload.order && typeof payload.order === 'object') {
+      return payload.order;
+    }
+
+    if (payload.object && typeof payload.object === 'object') {
+      return payload.object;
+    }
+  }
+
+  return payload;
+};
+
+const statusTitleByDolyamiStatus = {
+  pending: 'Ожидает оплаты',
+  new: 'Ожидает оплаты',
+  waiting_for_payment: 'Ожидает оплаты',
+  waiting_for_capture: 'Ожидает подтверждения',
+  approved: 'Ожидает подтверждения',
+  confirmed: 'Ожидает подтверждения',
+  captured: 'Ожидает подтверждения',
+  completed: 'Оплачен',
+  paid: 'Оплачен',
+  finished: 'Оплачен',
+  succeeded: 'Оплачен',
+  cancelled: 'Отменен',
+  canceled: 'Отменен',
+  rejected: 'Отменен',
+  failed: 'Отменен',
+  expired: 'Отменен',
+  declined: 'Отменен'
+};
+
+const statusByDolyamiEvent = {
+  'order.created': 'pending',
+  'order.pending': 'pending',
+  'order.waiting_for_payment': 'pending',
+  'order.approved': 'approved',
+  'order.confirmed': 'approved',
+  'order.captured': 'approved',
+  'order.completed': 'completed',
+  'order.paid': 'completed',
+  'order.finished': 'completed',
+  'order.cancelled': 'cancelled',
+  'order.canceled': 'canceled',
+  'order.rejected': 'rejected',
+  'order.failed': 'failed',
+  'order.expired': 'expired'
+};
+
+const successStates = new Set(['completed', 'paid', 'finished', 'succeeded']);
+
+const updateOrderFromDolyamiEvent = async payload => {
+  const orderPayload = extractDolyamiOrderPayload(payload);
+  const metadata = orderPayload?.metadata || payload?.metadata;
+
+  const order = await resolveOrderFromMetadata(metadata);
+  if (!order) {
+    return null;
+  }
+
+  const rawStatus = orderPayload?.status || payload?.status || null;
+  let normalizedStatus = rawStatus ? String(rawStatus).toLowerCase() : null;
+
+  const eventName = typeof payload?.event === 'string' ? payload.event.toLowerCase() : null;
+  if (!normalizedStatus && eventName && statusByDolyamiEvent[eventName]) {
+    normalizedStatus = statusByDolyamiEvent[eventName];
+  }
+
+  const updateData = {
+    payment_status: rawStatus || normalizedStatus || order.payment_status,
+    payment_method: 'dolyami',
+    payment_data: orderPayload,
+    payment_id: orderPayload?.uuid || orderPayload?.id || order.payment_id,
+    payment_confirmation_url: orderPayload?.checkout_url
+      || orderPayload?.confirmation_url
+      || order.payment_confirmation_url,
+    currency: orderPayload?.amount?.currency || order.currency
+  };
+
+  const cancellationReason = orderPayload?.cancel_reason
+    || orderPayload?.cancellation_reason
+    || payload?.cancel_reason
+    || payload?.cancellation_reason;
+
+  if (cancellationReason) {
+    updateData.cancellation_reason = cancellationReason;
+  }
+
+  const paidAtCandidate = orderPayload?.paid_at
+    || orderPayload?.completed_at
+    || orderPayload?.finished_at;
+
+  if (paidAtCandidate) {
+    updateData.paid_at = new Date(paidAtCandidate);
+  } else if (normalizedStatus && successStates.has(normalizedStatus)) {
+    updateData.paid_at = new Date();
+  }
+
+  if (normalizedStatus && statusTitleByDolyamiStatus[normalizedStatus]) {
+    const nextStatus = await ensureStatus(statusTitleByDolyamiStatus[normalizedStatus]);
+    updateData.status_id = nextStatus.id;
+  }
+
+  await order.update(updateData);
+
+  if (normalizedStatus && successStates.has(normalizedStatus)) {
+    const cartItemIds = Array.isArray(order.metadata?.cart_item_ids)
+      ? order.metadata.cart_item_ids
+      : [];
+
+    if (cartItemIds.length) {
+      try {
+        await cartService.removeItems({userId: order.user_id, itemIds: cartItemIds});
+      } catch (cartError) {
+        console.error('Не удалось очистить корзину пользователя после оплаты Долями', cartError);
+      }
+    }
+  }
+
+  return order;
+};
+
 module.exports = {
   OrderError,
   createOrderFromCart,
   getOrderBySlug,
   updateOrderFromPaymentEvent,
-  prepareReceiptItems
+  prepareReceiptItems,
+  updateOrderFromDolyamiEvent
 };

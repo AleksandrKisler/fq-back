@@ -23,7 +23,13 @@ const path = require('path');
 
 
 const app = express();
-app.use(express.json());
+app.use(express.json({
+  verify: (req, res, buf) => {
+    if (buf && buf.length) {
+      req.rawBody = Buffer.from(buf);
+    }
+  }
+}));
 
 app.use('/images', express.static(path.join(process.cwd(), 'public', 'images')));
 app.use('/product', express.static(path.join(process.cwd(), 'public', 'product')));
