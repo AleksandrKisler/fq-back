@@ -68,9 +68,6 @@ module.exports = {
         return res.status(401).json({error: 'Неправильный email или пароль'});
       }
 
-      if (!user.isConfirmed) {
-        return res.status(403).json({error: 'Аккаунт не подтверждён'});
-      }
 
       const tokens = jwt.generateTokens(user);
 

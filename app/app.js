@@ -59,7 +59,7 @@ app.use('/api/v1/', orderRoutes);
 app.use('/api/v1/', deliveryRoutes);
 app.use('/api/v1/uploads', uploadsRouter);
 app.use('/api/v1/rules', rulesRouter);
-app.use('/api/v1/newsletter', authMiddleware, adminMiddleware, newsletterRoutes);
+app.use('/api/v1/newsletter', newsletterRoutes);
 app.use('/api/v1/', dashboardRoutes);
 
 // Функция запуска миграций

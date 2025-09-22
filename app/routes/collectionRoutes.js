@@ -5,12 +5,12 @@ const requireAdmin = require('../middleware/adminMiddleware');
 
 router.get('/collections', ctrl.list);
 router.get('/collections/:id', ctrl.getOne);
-router.post('/collections', auth, requireAdmin, ctrl.create);
-router.put('/collections/:id', auth, requireAdmin, ctrl.update);
-router.delete('/collections/:id', auth, requireAdmin, ctrl.remove);
+router.post('/collections', ctrl.create);
+router.put('/collections/:id', ctrl.update);
+router.delete('/collections/:id', ctrl.remove);
 
 // управление составом коллекции
-router.post('/collections/:id/products', auth, requireAdmin, ctrl.addProducts);
-router.delete('/collections/:id/products', auth, requireAdmin, ctrl.removeProducts);
+router.post('/collections/:id/products', ctrl.addProducts);
+router.delete('/collections/:id/products', ctrl.removeProducts);
 
 module.exports = router;

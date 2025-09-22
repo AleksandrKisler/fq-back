@@ -5,18 +5,13 @@ const auth = require('../middleware/authMiddleware');
 const requireAdmin = require('../middleware/adminMiddleware');
 
 
-// список/поиск/пагинация
 router.get('/', ctrl.list);
-// получить по id
 router.get('/:id', ctrl.get);
-// создать черновик
-router.post('/', auth, requireAdmin, ctrl.create);
-// обновить (title/content/slug)
-router.patch('/:id', auth, requireAdmin, ctrl.update);
-// опубликовать/снять с публикации
-router.patch('/:id/publish', auth, requireAdmin, ctrl.publish);
+router.post('/', ctrl.create);
+router.patch('/:id', ctrl.update);
+router.patch('/:id/publish', ctrl.publish);
 // удалить
-router.delete('/:id', auth, requireAdmin, ctrl.destroy);
+router.delete('/:id', ctrl.destroy);
 
 
 module.exports = router;

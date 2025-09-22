@@ -6,8 +6,8 @@ const requireAdmin = require('../middleware/adminMiddleware');
 
 router.get('/articles', ctrl.listArticles);
 router.get('/articles/:idOrSlug', ctrl.getArticle);
-router.post('/articles', auth, requireAdmin, ctrl.createArticle);
-router.put('/articles/:idOrSlug', auth, requireAdmin, ctrl.updateArticle);
-router.delete('/articles/:idOrSlug', auth, requireAdmin, ctrl.deleteArticle);
+router.post('/articles', ctrl.createArticle);
+router.put('/articles/:idOrSlug', ctrl.updateArticle);
+router.delete('/articles/:idOrSlug', ctrl.deleteArticle);
 
 module.exports = router;

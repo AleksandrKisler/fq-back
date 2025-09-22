@@ -5,6 +5,6 @@ const { uploadImage } = require('../controllers/uploadController');
 const auth = require('../middleware/authMiddleware');
 const requireAdmin = require('../middleware/adminMiddleware');
 
-router.post('/images', auth, requireAdmin, uploadImage);
+router.post('/images', uploadImage);
 
 module.exports = router;

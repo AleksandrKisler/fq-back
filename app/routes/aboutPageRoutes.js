@@ -7,10 +7,10 @@ router.get('/about-pages', ctrl.list);
 router.get('/about-pages/active', ctrl.getActive);
 router.get('/about-pages/:idOrSlug', ctrl.getOne);
 
-router.post('/about-pages', auth, requireAdmin, ctrl.create);
-router.put('/about-pages/:id', auth, requireAdmin, ctrl.update);
-router.delete('/about-pages/:id', auth, requireAdmin, ctrl.remove);
-router.post('/about-pages/:id/restore', auth, requireAdmin, ctrl.restore);
-router.post('/about-pages/:id/publish', auth, requireAdmin, ctrl.publish);
+router.post('/about-pages', ctrl.create);
+router.put('/about-pages/:id', ctrl.update);
+router.delete('/about-pages/:id', ctrl.remove);
+router.post('/about-pages/:id/restore', ctrl.restore);
+router.post('/about-pages/:id/publish', ctrl.publish);
 
 module.exports = router;
