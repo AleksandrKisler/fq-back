@@ -6,5 +6,6 @@ const orderController = require('../controllers/orderController');
 router.post('/orders/checkout', auth, orderController.checkout);
 router.get('/orders/:slug', auth, orderController.getOrder);
 router.post('/payments/yookassa/webhook', orderController.handleWebhook);
+router.post('/payments/dolyami/webhook', orderController.handleDolyamiWebhook);
 
 module.exports = router;

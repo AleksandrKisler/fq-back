@@ -20,6 +20,42 @@ YOOKASSA_RETURN_URL=https://example.com/payment/success
 
 Эти параметры используются для инициализации платежей и проверки webhook-уведомлений.
 
+## Интеграция с Долями
+
+Для оформления заказов через сервис рассрочки Долями необходимо указать в `.env`:
+
+```
+DOLYAMI_API_KEY=<API-ключ интеграции>
+DOLYAMI_SHOP_ID=<идентификатор магазина>
+# Необязательно:
+DOLYAMI_API_URL=https://partner.dolyami.ru/api/v1
+DOLYAMI_SUCCESS_URL=https://example.com/payment/success
+DOLYAMI_FAIL_URL=https://example.com/payment/fail
+DOLYAMI_CANCEL_URL=https://example.com/payment/cancel
+DOLYAMI_WEBHOOK_SECRET=<секрет для проверки подписи уведомлений>
+```
+
+- `POST /api/v1/payments/dolyami/webhook` — обработчик уведомлений от Долями.
+- Вызов `POST /api/v1/orders/checkout` должен содержать блок `payment` с указанием метода:
+
+```json
+{
+  "delivery": {
+    "method": "store_pickup",
+    "cost": 0,
+    "address": "г. Москва, ул. Пример, 1"
+  },
+  "payment": {
+    "method": "dolyami",
+    "successUrl": "https://example.com/payment/success",
+    "failUrl": "https://example.com/payment/fail",
+    "cancelUrl": "https://example.com/payment/cancel"
+  }
+}
+```
+
+Если параметр `payment.method` не указан, по умолчанию используется YooKassa (при наличии настроек). В ответе checkout-метода поле `payment` будет содержать `provider: "dolyami"` и ссылку для подтверждения оплаты.
+
 ## Интеграция с СДЭК
 
 Для работы доставки через СДЭК необходимо указать в `.env` следующие параметры:
