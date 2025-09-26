@@ -3,7 +3,7 @@ services:
     build: ./app
     container_name: node-app
     ports:
-      - "3000:3000"
+      - "127.0.0.1:3000:3000"
     volumes:
       - ./app:/usr/src/app
       - /usr/src/app/node_modules
@@ -42,7 +42,7 @@ services:
     image: nginx
     container_name: nginx-proxy
     ports:
-      - "80:80"
+      - "127.0.0.1:80:80"
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf
     depends_on:
